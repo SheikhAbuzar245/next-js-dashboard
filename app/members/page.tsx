@@ -45,7 +45,7 @@ export default async function MembersPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
         <Card>
           <CardHeader>
             <CardTitle>Conversion Funnel</CardTitle>

@@ -127,8 +127,8 @@ export default async function AnalyticsPage() {
         <StatCard title="Avg Call Duration" value={formatCallDuration(data.avgDuration)} icon={Users} iconColor="text-purple-600" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">
+        <Card className="xl:col-span-2">
           <CardHeader><CardTitle>Calls & Bookings This Week</CardTitle></CardHeader>
           <CardContent><CallsBarChart data={data.chartData} /></CardContent>
         </Card>
@@ -140,7 +140,7 @@ export default async function AnalyticsPage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
         <Card>
           <CardHeader><CardTitle>Bookings Trend (30 Days)</CardTitle></CardHeader>
           <CardContent><BookingsTrendChart data={data.trendData} /></CardContent>

@@ -108,8 +108,10 @@ export default async function OverviewPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2">
+      <CallAgentButton />
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">
+        <Card className="xl:col-span-2">
           <CardHeader>
             <CardTitle>Calls & Bookings This Week</CardTitle>
           </CardHeader>
@@ -118,21 +120,18 @@ export default async function OverviewPage() {
           </CardContent>
         </Card>
 
-        <div className="space-y-4">
-          <CallAgentButton />
-          <Card>
-            <CardHeader>
-              <CardTitle>Call Status Breakdown</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <CallStatusDonut
-                completed={data.completed}
-                missed={data.missed}
-                failed={data.failed}
-              />
-            </CardContent>
-          </Card>
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Call Status Breakdown</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CallStatusDonut
+              completed={data.completed}
+              missed={data.missed}
+              failed={data.failed}
+            />
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

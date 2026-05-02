@@ -29,11 +29,11 @@ export default function CallsTableClient({ calls }: CallsTableClientProps) {
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-      <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-        <p className="font-semibold text-gray-900 text-sm">
+      <div className="p-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
+        <p className="font-semibold text-gray-900 text-sm shrink-0">
           {filtered.length} calls
         </p>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {["", "completed", "missed", "active", "failed"].map((s) => (
             <button
               key={s}
