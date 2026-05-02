@@ -96,6 +96,10 @@ async function createAssistant(privateKey: string): Promise<string> {
     // No custom transcriber — use Vapi's default (Deepgram built-in)
     endCallMessage: "Thank you for calling PowerFit Gym. Have a great day!",
     endCallPhrases: ["goodbye", "bye", "thank you bye", "that's all"],
+    artifactPlan: {
+      recordingEnabled: true,
+      videoRecordingEnabled: false,
+    },
   };
 
   const res = await fetch(`${VAPI_API}/assistant`, {

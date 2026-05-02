@@ -1,3 +1,9 @@
+export interface CallMessage {
+  role: "assistant" | "user";
+  content: string;
+  secondsFromStart: number | null;
+}
+
 export interface Call {
   id: string;
   vapi_call_id: string | null;
@@ -5,6 +11,7 @@ export interface Call {
   status: "active" | "completed" | "missed" | "failed";
   duration: number | null;
   transcript: string | null;
+  messages: CallMessage[] | null;
   summary: string | null;
   recording_url: string | null;
   booking_made: boolean;

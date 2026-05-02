@@ -13,6 +13,7 @@ export async function POST(request: Request) {
       status: body.status ?? "completed",
       duration: body.duration ?? null,
       transcript: body.transcript ?? null,
+      messages: body.messages ?? null,
       summary: body.summary ?? null,
       recording_url: body.recordingUrl ?? null,
       booking_made: body.bookingMade ?? false,

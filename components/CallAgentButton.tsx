@@ -11,6 +11,15 @@ interface TranscriptLine {
   text: string;
 }
 
+interface CallMessage {
+  role: "assistant" | "user" | "system" | "tool_call" | "tool_result";
+  message?: string;
+  content?: string;
+  time?: number;
+  endTime?: number;
+  secondsFromStart?: number;
+}
+
 interface EndOfCallReport {
   type: "end-of-call-report";
   endedReason?: string;
@@ -18,7 +27,7 @@ interface EndOfCallReport {
   summary?: string;
   recordingUrl?: string;
   durationSeconds?: number;
-  messages?: { role: string; content: string }[];
+  messages?: CallMessage[];
 }
 
 function vapiErrorToString(e: unknown): string {
@@ -69,6 +78,15 @@ export default function CallAgentButton() {
       transcript.map((t) => `${t.role}: ${t.text}`).join("\n") ??
       null;
 
+    // Normalize messages — Vapi uses `message` field, not `content`
+    const normalizedMessages = report.messages
+      ?.filter((m) => m.role === "assistant" || m.role === "user")
+      .map((m) => ({
+        role: m.role,
+        content: m.message ?? m.content ?? "",
+        secondsFromStart: m.secondsFromStart ?? null,
+      }));
+
     const res = await fetch("/api/calls", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -77,6 +95,7 @@ export default function CallAgentButton() {
         status: "completed",
         duration,
         transcript: transcriptText || null,
+        messages: normalizedMessages?.length ? normalizedMessages : null,
         summary: report.summary ?? null,
         recordingUrl: report.recordingUrl ?? null,
         endReason: report.endedReason ?? null,
