@@ -191,18 +191,34 @@ async function createAssistant(privateKey: string): Promise<string> {
 
 let cachedAssistantId: string | null = null;
 
+async function assistantExists(privateKey: string, id: string): Promise<boolean> {
+  const res = await fetch(`${VAPI_API}/assistant/${id}`, {
+    headers: authHeaders(privateKey),
+  });
+  return res.ok;
+}
+
 export async function GET() {
   try {
-    if (cachedAssistantId) {
-      return NextResponse.json({ assistantId: cachedAssistantId });
-    }
-
-    if (process.env.VAPI_ASSISTANT_ID) {
-      cachedAssistantId = process.env.VAPI_ASSISTANT_ID;
-      return NextResponse.json({ assistantId: cachedAssistantId });
-    }
-
     const privateKey = process.env.VAPI_PRIVATE_KEY!;
+
+    // Validate env-pinned ID before trusting it
+    if (process.env.VAPI_ASSISTANT_ID) {
+      const id = process.env.VAPI_ASSISTANT_ID;
+      if (await assistantExists(privateKey, id)) {
+        cachedAssistantId = id;
+        return NextResponse.json({ assistantId: id });
+      }
+      // ID is stale — fall through to recreate
+    }
+
+    // Validate cached ID
+    if (cachedAssistantId) {
+      if (await assistantExists(privateKey, cachedAssistantId)) {
+        return NextResponse.json({ assistantId: cachedAssistantId });
+      }
+      cachedAssistantId = null; // stale — recreate
+    }
 
     await Promise.all([
       ensureCredential(privateKey, "openrouter", process.env.OPENROUTER_API_KEY!),

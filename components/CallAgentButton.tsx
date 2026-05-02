@@ -64,6 +64,13 @@ export default function CallAgentButton() {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [transcript]);
 
+  // Clean up on unmount so the Daily room is released
+  useEffect(() => {
+    return () => {
+      vapiRef.current?.stop();
+    };
+  }, []);
+
   async function saveCallReport(report: Partial<EndOfCallReport>) {
     if (callSavedRef.current) return; // prevent double-save
     callSavedRef.current = true;
@@ -114,6 +121,13 @@ export default function CallAgentButton() {
     setError(null);
     setStatus("connecting");
     setTranscript([]);
+
+    // Destroy any stale Vapi/Daily session before creating a new one
+    if (vapiRef.current) {
+      vapiRef.current.stop();
+      vapiRef.current = null;
+      await new Promise((r) => setTimeout(r, 300));
+    }
 
     try {
       const res = await fetch("/api/vapi-setup");
