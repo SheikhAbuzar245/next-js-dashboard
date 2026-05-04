@@ -149,14 +149,74 @@ async function deleteAssistantIfExists(privateKey: string): Promise<void> {
 }
 
 async function createAssistant(privateKey: string): Promise<string> {
-  const body = {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
+  const serverUrl = appUrl ? `${appUrl}/api/vapi-webhook` : null;
+
+  const tools = serverUrl
+    ? [
+        {
+          type: "function",
+          function: {
+            name: "bookClass",
+            description: "Books a fitness class for the caller",
+            parameters: {
+              type: "object",
+              properties: {
+                memberName: { type: "string", description: "Full name of the member" },
+                memberPhone: { type: "string", description: "Phone number of the member" },
+                className: { type: "string", description: "Name of the class to book" },
+                classTime: { type: "string", description: "Class date and time (ISO 8601)" },
+              },
+              required: ["memberName", "memberPhone", "className", "classTime"],
+            },
+          },
+          server: { url: serverUrl },
+        },
+        {
+          type: "function",
+          function: {
+            name: "saveLead",
+            description: "Saves a new lead to the database",
+            parameters: {
+              type: "object",
+              properties: {
+                name: { type: "string", description: "Full name" },
+                phone: { type: "string", description: "Phone number" },
+                interest: { type: "string", description: "Which class or membership they are interested in" },
+                notes: { type: "string", description: "Any additional notes from the conversation" },
+              },
+              required: ["name", "phone"],
+            },
+          },
+          server: { url: serverUrl },
+        },
+        {
+          type: "function",
+          function: {
+            name: "getMemberInfo",
+            description: "Looks up an existing member by phone number",
+            parameters: {
+              type: "object",
+              properties: {
+                phone: { type: "string", description: "Phone number to look up" },
+              },
+              required: ["phone"],
+            },
+          },
+          server: { url: serverUrl },
+        },
+      ]
+    : [];
+
+  const body: Record<string, unknown> = {
     name: ASSISTANT_NAME,
     firstMessage: "Hello! Thank you for calling PowerFit Gym. This is Sara. How can I help you today?",
     model: {
       provider: "openrouter",
       model: process.env.OPENROUTER_MODEL ?? "openai/gpt-4o-mini",
       systemPrompt: SYSTEM_PROMPT,
-      temperature: 0.5, // lower = more predictable, less likely to go off-script
+      temperature: 0.5,
+      tools,
     },
     voice: {
       provider: "11labs",
@@ -166,13 +226,16 @@ async function createAssistant(privateKey: string): Promise<string> {
     },
     endCallMessage: "Thank you for calling PowerFit Gym. Have a great day!",
     endCallPhrases: ["goodbye", "bye", "thank you bye", "that's all"],
-    // Max call duration — 5 minutes (300s) to prevent abuse
     maxDurationSeconds: 300,
     artifactPlan: {
       recordingEnabled: true,
       videoRecordingEnabled: false,
     },
   };
+
+  if (serverUrl) {
+    body.serverUrl = serverUrl;
+  }
 
   const res = await fetch(`${VAPI_API}/assistant`, {
     method: "POST",

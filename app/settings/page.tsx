@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Save, Phone, Bot, Calendar } from "lucide-react";
+import { Save, Phone, Bot, Calendar, CheckCircle, XCircle, Loader2, AlertCircle } from "lucide-react";
 
 const DEFAULT_SYSTEM_PROMPT = `You are Sara, the AI receptionist for PowerFit Gym.
 Your job is to:
@@ -24,10 +24,92 @@ const GYM_CLASSES = [
   { name: "HIIT", time: "5:30 AM", days: "Daily" },
 ];
 
+type TwilioStatus = {
+  connected: boolean;
+  phoneNumber: string | null;
+  phoneNumberId: string | null;
+  assistantId: string | null;
+};
+
 export default function SettingsPage() {
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
-  const [phoneNumber, setPhoneNumber] = useState("+1 (555) 000-0000");
   const [saved, setSaved] = useState(false);
+
+  // Twilio state
+  const [twilioStatus, setTwilioStatus] = useState<TwilioStatus | null>(null);
+  const [twilioLoading, setTwilioLoading] = useState(true);
+  const [twilioError, setTwilioError] = useState<string | null>(null);
+  const [twilioSaving, setTwilioSaving] = useState(false);
+  const [accountSid, setAccountSid] = useState("");
+  const [authToken, setAuthToken] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [showForm, setShowForm] = useState(false);
+
+  const fetchTwilioStatus = useCallback(async () => {
+    setTwilioLoading(true);
+    setTwilioError(null);
+    try {
+      const res = await fetch("/api/twilio-setup");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to load Twilio status");
+      setTwilioStatus(data);
+    } catch (e) {
+      setTwilioError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTwilioLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTwilioStatus();
+  }, [fetchTwilioStatus]);
+
+  const handleConnect = async () => {
+    if (!accountSid || !authToken || !phoneNumber) {
+      setTwilioError("All three fields are required.");
+      return;
+    }
+    setTwilioSaving(true);
+    setTwilioError(null);
+    try {
+      const res = await fetch("/api/twilio-setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ twilioAccountSid: accountSid, twilioAuthToken: authToken, phoneNumber }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to connect Twilio number");
+      setTwilioStatus({ connected: true, phoneNumber: data.phoneNumber, phoneNumberId: data.phoneNumberId, assistantId: data.assistantId });
+      setShowForm(false);
+      setAccountSid("");
+      setAuthToken("");
+      setPhoneNumber("");
+    } catch (e) {
+      setTwilioError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTwilioSaving(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if (!twilioStatus?.phoneNumberId) return;
+    setTwilioSaving(true);
+    setTwilioError(null);
+    try {
+      const res = await fetch("/api/twilio-setup", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phoneNumberId: twilioStatus.phoneNumberId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to disconnect");
+      setTwilioStatus({ connected: false, phoneNumber: null, phoneNumberId: null, assistantId: null });
+    } catch (e) {
+      setTwilioError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTwilioSaving(false);
+    }
+  };
 
   const handleSave = () => {
     setSaved(true);
@@ -67,30 +149,134 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      {/* Twilio Phone Number */}
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-2">
-            <Phone className="w-5 h-5 text-green-600" />
-            <CardTitle>Phone Number</CardTitle>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Phone className="w-5 h-5 text-green-600" />
+              <CardTitle>Twilio Phone Number</CardTitle>
+            </div>
+            {!twilioLoading && twilioStatus && (
+              <span className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${
+                twilioStatus.connected
+                  ? "bg-green-50 text-green-700"
+                  : "bg-gray-100 text-gray-500"
+              }`}>
+                {twilioStatus.connected
+                  ? <><CheckCircle className="w-3.5 h-3.5" /> Connected</>
+                  : <><XCircle className="w-3.5 h-3.5" /> Not connected</>
+                }
+              </span>
+            )}
           </div>
-          <CardDescription>AI agent phone number via Vapi</CardDescription>
+          <CardDescription>
+            Link a Twilio phone number so callers can dial in and talk to Sara
+          </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="flex gap-3">
-            <input
-              type="tel"
-              className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={phoneNumber}
-              onChange={(e) => setPhoneNumber(e.target.value)}
-            />
-            <Button variant="outline" size="sm">Update</Button>
-          </div>
-          <p className="text-xs text-gray-400 mt-2">
-            Set your webhook URL in Vapi dashboard:{" "}
-            <code className="bg-gray-100 px-1 py-0.5 rounded text-xs">
-              https://yourdomain.com/api/vapi-webhook
-            </code>
-          </p>
+        <CardContent className="space-y-4">
+          {twilioLoading ? (
+            <div className="flex items-center gap-2 text-sm text-gray-400 py-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading status...
+            </div>
+          ) : twilioStatus?.connected ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-100">
+                <div>
+                  <p className="text-sm font-semibold text-green-800">{twilioStatus.phoneNumber}</p>
+                  <p className="text-xs text-green-600 mt-0.5">Routed to Sara — AI assistant active</p>
+                </div>
+                <CheckCircle className="w-5 h-5 text-green-500" />
+              </div>
+              <p className="text-xs text-gray-400">
+                Incoming calls to this number are answered by Sara. Call logs appear in the{" "}
+                <span className="font-medium text-gray-600">Calls</span> tab automatically.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDisconnect}
+                disabled={twilioSaving}
+                className="text-red-600 border-red-200 hover:bg-red-50"
+              >
+                {twilioSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                Disconnect Number
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {!showForm ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-500">
+                    No Twilio number connected. Link one to enable inbound phone calls.
+                  </p>
+                  <Button size="sm" onClick={() => setShowForm(true)}>
+                    <Phone className="w-4 h-4" />
+                    Connect Twilio Number
+                  </Button>
+                  <div className="text-xs text-gray-400 space-y-1 pt-1">
+                    <p className="font-medium text-gray-500">How to get your credentials:</p>
+                    <ol className="list-decimal ml-4 space-y-1">
+                      <li>Go to <span className="font-mono bg-gray-100 px-1 rounded">console.twilio.com</span></li>
+                      <li>Copy your Account SID and Auth Token from the dashboard</li>
+                      <li>Buy a phone number under <span className="font-mono bg-gray-100 px-1 rounded">Phone Numbers → Manage → Buy</span></li>
+                      <li>Enter the number in E.164 format (e.g. <span className="font-mono bg-gray-100 px-1 rounded">+12025550100</span>)</li>
+                    </ol>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-gray-700">Account SID</label>
+                    <input
+                      type="text"
+                      placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                      className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={accountSid}
+                      onChange={(e) => setAccountSid(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-gray-700">Auth Token</label>
+                    <input
+                      type="password"
+                      placeholder="Your Twilio auth token"
+                      className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={authToken}
+                      onChange={(e) => setAuthToken(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-gray-700">Phone Number (E.164)</label>
+                    <input
+                      type="tel"
+                      placeholder="+12025550100"
+                      className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={handleConnect} disabled={twilioSaving}>
+                      {twilioSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                      {twilioSaving ? "Connecting..." : "Connect"}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => { setShowForm(false); setTwilioError(null); }}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {twilioError && (
+            <div className="flex items-start gap-2 p-3 bg-red-50 rounded-lg border border-red-100 text-sm text-red-700">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              {twilioError}
+            </div>
+          )}
         </CardContent>
       </Card>
 
