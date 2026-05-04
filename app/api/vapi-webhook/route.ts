@@ -1,107 +1,23 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
-import type { VapiWebhookPayload } from "@/types";
 
-async function handleCallStarted(
-  db: ReturnType<typeof createServiceClient>,
-  call: { id: string; phoneNumber: string; startedAt: string }
-) {
-  await db.from("calls").insert({
-    vapi_call_id: call.id,
-    caller_phone: call.phoneNumber,
-    status: "active",
-    started_at: call.startedAt,
-  });
-}
+type DB = ReturnType<typeof createServiceClient>;
 
-async function handleCallEnded(
-  db: ReturnType<typeof createServiceClient>,
-  call: {
-    id: string;
-    phoneNumber: string;
-    startedAt: string;
-    endedAt: string;
-    duration: number;
-    transcript: string;
-    summary: string;
-    recordingUrl: string;
-    endReason: string;
-  }
-) {
-  const { data: existing } = await db
-    .from("calls")
-    .select("id")
-    .eq("vapi_call_id", call.id)
-    .single();
+// ─── tool execution ────────────────────────────────────────────────────────
 
-  if (existing) {
-    await db
-      .from("calls")
-      .update({
-        status: "completed",
-        duration: call.duration,
-        transcript: call.transcript,
-        summary: call.summary,
-        recording_url: call.recordingUrl,
-        end_reason: call.endReason,
-        ended_at: call.endedAt,
-      })
-      .eq("vapi_call_id", call.id);
-  } else {
-    await db.from("calls").insert({
-      vapi_call_id: call.id,
-      caller_phone: call.phoneNumber,
-      status: "completed",
-      duration: call.duration,
-      transcript: call.transcript,
-      summary: call.summary,
-      recording_url: call.recordingUrl,
-      end_reason: call.endReason,
-      started_at: call.startedAt,
-      ended_at: call.endedAt,
-    });
-  }
-
-  // Update daily analytics snapshot
-  const today = new Date().toISOString().split("T")[0];
-  const { data: analytics } = await db
-    .from("analytics")
-    .select("*")
-    .eq("date", today)
-    .single();
-
-  if (analytics) {
-    await db
-      .from("analytics")
-      .update({
-        completed_calls: analytics.completed_calls + 1,
-        total_calls: analytics.total_calls + 1,
-      })
-      .eq("date", today);
-  } else {
-    await db.from("analytics").insert({
-      date: today,
-      total_calls: 1,
-      completed_calls: 1,
-    });
-  }
-}
-
-async function handleToolCall(
-  db: ReturnType<typeof createServiceClient>,
-  tool: { name: string; parameters: Record<string, string> },
-  callId: string
-) {
-  const { data: call } = await db
-    .from("calls")
-    .select("id")
-    .eq("vapi_call_id", callId)
-    .single();
-
+async function executeToolCall(
+  db: DB,
+  name: string,
+  args: Record<string, string>,
+  vapiCallId: string | null
+): Promise<string> {
+  const { data: call } = vapiCallId
+    ? await db.from("calls").select("id").eq("vapi_call_id", vapiCallId).single()
+    : { data: null };
   const callUuid = call?.id ?? null;
 
-  if (tool.name === "bookClass") {
-    const { memberName, memberPhone, className, classTime } = tool.parameters;
+  if (name === "bookClass") {
+    const { memberName, memberPhone, className, classTime } = args;
     await db.from("bookings").insert({
       call_id: callUuid,
       member_name: memberName,
@@ -111,92 +27,187 @@ async function handleToolCall(
       status: "confirmed",
     });
     if (callUuid) {
-      await db
-        .from("calls")
-        .update({ booking_made: true })
-        .eq("id", callUuid);
+      await db.from("calls").update({ booking_made: true }).eq("id", callUuid);
     }
+    return `Booking confirmed for ${memberName} in ${className}.`;
   }
 
-  if (tool.name === "saveLead") {
-    const { name, phone, interest, notes } = tool.parameters;
+  if (name === "saveLead") {
+    const { name: memberName, phone, interest, notes } = args;
     await db
       .from("members")
       .upsert(
-        { call_id: callUuid, name, phone, interest, notes, status: "lead" },
+        { call_id: callUuid, name: memberName, phone, interest, notes, status: "lead" },
         { onConflict: "phone" }
       );
     if (callUuid) {
-      await db
-        .from("calls")
-        .update({ lead_captured: true })
-        .eq("id", callUuid);
+      await db.from("calls").update({ lead_captured: true }).eq("id", callUuid);
     }
+    return `Lead saved for ${memberName}.`;
   }
 
-  if (tool.name === "getMemberInfo") {
-    // read-only, no DB write needed
+  if (name === "getMemberInfo") {
+    const { phone } = args;
+    const { data: member } = await db
+      .from("members")
+      .select("name, status, interest")
+      .eq("phone", phone)
+      .single();
+    if (!member) return "Member not found.";
+    return `Found member: ${member.name}, status: ${member.status}, interest: ${member.interest ?? "not specified"}.`;
   }
+
+  return "Tool executed.";
 }
 
-async function handleMissedCall(
-  db: ReturnType<typeof createServiceClient>,
-  call: { id: string; phoneNumber: string; missedAt: string }
-) {
+// ─── call event handlers ───────────────────────────────────────────────────
+
+function extractCallerPhone(call: Record<string, unknown>): string | null {
+  // Phone calls: caller number is in call.customer.number
+  // Web calls: call.phoneNumber is a string (or absent)
+  const customer = call.customer as Record<string, unknown> | undefined;
+  if (customer?.number) return customer.number as string;
+  if (typeof call.phoneNumber === "string") return call.phoneNumber || null;
+  return null;
+}
+
+async function handleCallStarted(db: DB, call: Record<string, unknown>) {
   await db.from("calls").insert({
-    vapi_call_id: call.id,
-    caller_phone: call.phoneNumber,
-    status: "missed",
-    started_at: call.missedAt,
+    vapi_call_id: call.id as string,
+    caller_phone: extractCallerPhone(call),
+    status: "active",
+    started_at: (call.startedAt as string) ?? new Date().toISOString(),
   });
+}
+
+async function handleCallEnded(db: DB, call: Record<string, unknown>) {
+  const id = call.id as string;
+  const payload = {
+    status: "completed",
+    duration: call.duration as number ?? null,
+    transcript: call.transcript as string ?? null,
+    summary: call.summary as string ?? null,
+    recording_url: call.recordingUrl as string ?? null,
+    end_reason: call.endReason as string ?? null,
+    ended_at: call.endedAt as string ?? new Date().toISOString(),
+  };
+
+  const { data: existing } = await db.from("calls").select("id").eq("vapi_call_id", id).single();
+
+  if (existing) {
+    await db.from("calls").update(payload).eq("vapi_call_id", id);
+  } else {
+    await db.from("calls").insert({
+      vapi_call_id: id,
+      caller_phone: extractCallerPhone(call),
+      started_at: call.startedAt as string ?? null,
+      ...payload,
+    });
+  }
 
   const today = new Date().toISOString().split("T")[0];
-  const { data: analytics } = await db
-    .from("analytics")
-    .select("*")
-    .eq("date", today)
-    .single();
-
+  const { data: analytics } = await db.from("analytics").select("*").eq("date", today).single();
   if (analytics) {
     await db
       .from("analytics")
-      .update({
-        missed_calls: analytics.missed_calls + 1,
-        total_calls: analytics.total_calls + 1,
-      })
+      .update({ completed_calls: analytics.completed_calls + 1, total_calls: analytics.total_calls + 1 })
       .eq("date", today);
   } else {
-    await db.from("analytics").insert({
-      date: today,
-      total_calls: 1,
-      missed_calls: 1,
-    });
+    await db.from("analytics").insert({ date: today, total_calls: 1, completed_calls: 1 });
   }
 }
 
+async function handleMissedCall(db: DB, call: Record<string, unknown>) {
+  await db.from("calls").insert({
+    vapi_call_id: call.id as string,
+    caller_phone: extractCallerPhone(call),
+    status: "missed",
+    started_at: (call.missedAt as string) ?? new Date().toISOString(),
+  });
+
+  const today = new Date().toISOString().split("T")[0];
+  const { data: analytics } = await db.from("analytics").select("*").eq("date", today).single();
+  if (analytics) {
+    await db
+      .from("analytics")
+      .update({ missed_calls: analytics.missed_calls + 1, total_calls: analytics.total_calls + 1 })
+      .eq("date", today);
+  } else {
+    await db.from("analytics").insert({ date: today, total_calls: 1, missed_calls: 1 });
+  }
+}
+
+// ─── main handler ──────────────────────────────────────────────────────────
+
 export async function POST(request: Request) {
   try {
-    const body: VapiWebhookPayload = await request.json();
+    const body = await request.json() as Record<string, unknown>;
     const db = createServiceClient();
 
-    switch (body.event) {
-      case "call.started":
-        await handleCallStarted(db, body.call);
-        break;
-      case "call.ended":
-        await handleCallEnded(db, body.call);
-        break;
-      case "tool.called":
-        await handleToolCall(db, body.tool, body.callId);
-        break;
-      case "call.missed":
-        await handleMissedCall(db, body.call);
-        break;
+    // ── Format A: Vapi server-message format (used when serverUrl is set on assistant)
+    // Vapi sends { message: { type: "tool-calls" | "status-update" | ... }, call: {...} }
+    const msg = body.message as Record<string, unknown> | undefined;
+    if (msg) {
+      const call = body.call as Record<string, unknown> | undefined;
+      const callId = (call?.id ?? null) as string | null;
+
+      if (msg.type === "tool-calls") {
+        type ToolCallItem = {
+          id: string;
+          function: { name: string; arguments: string | Record<string, string> };
+        };
+        const toolCallList = (msg.toolCallList as ToolCallItem[]) ?? [];
+
+        const results = await Promise.all(
+          toolCallList.map(async (tc) => {
+            const args =
+              typeof tc.function.arguments === "string"
+                ? (JSON.parse(tc.function.arguments) as Record<string, string>)
+                : tc.function.arguments;
+            const result = await executeToolCall(db, tc.function.name, args, callId);
+            return { toolCallId: tc.id, result };
+          })
+        );
+
+        return NextResponse.json({ results });
+      }
+
+      if (msg.type === "status-update" || msg.type === "call-start") {
+        const status = msg.status as string | undefined;
+        if (status === "in-progress" && call) await handleCallStarted(db, call);
+        if ((status === "ended" || status === "error") && call) await handleCallEnded(db, call);
+      }
+
+      if (msg.type === "end-of-call-report" && call) {
+        await handleCallEnded(db, { ...call, ...(msg as Record<string, unknown>) });
+      }
+
+      return NextResponse.json({});
     }
 
-    return NextResponse.json({ success: true });
+    // ── Format B: Vapi webhook-event format (used when webhook URL is set in Vapi dashboard)
+    // Vapi sends { event: "call.started" | "call.ended" | "tool.called" | "call.missed", ... }
+    const event = body.event as string | undefined;
+
+    if (event === "call.started") {
+      await handleCallStarted(db, body.call as Record<string, unknown>);
+    } else if (event === "call.ended") {
+      await handleCallEnded(db, body.call as Record<string, unknown>);
+    } else if (event === "tool.called") {
+      const tool = body.tool as { name: string; parameters: Record<string, string>; toolCallId?: string };
+      const callId = body.callId as string ?? null;
+      const result = await executeToolCall(db, tool.name, tool.parameters, callId);
+      // Return result so the AI gets confirmation back
+      if (tool.toolCallId) {
+        return NextResponse.json({ results: [{ toolCallId: tool.toolCallId, result }] });
+      }
+    } else if (event === "call.missed") {
+      await handleMissedCall(db, body.call as Record<string, unknown>);
+    }
+
+    return NextResponse.json({});
   } catch (error) {
-    console.error("Webhook error:", error);
-    return NextResponse.json({ success: false }, { status: 500 });
+    console.error("[vapi-webhook] Error:", error);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }

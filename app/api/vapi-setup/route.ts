@@ -152,6 +152,8 @@ async function createAssistant(privateKey: string): Promise<string> {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
   const serverUrl = appUrl ? `${appUrl}/api/vapi-webhook` : null;
 
+  // Tools go at ROOT level (not inside model) — Vapi invokes server.url when the AI calls them.
+  // The serverUrl on the assistant receives call lifecycle events (started, ended, missed).
   const tools = serverUrl
     ? [
         {
@@ -216,7 +218,7 @@ async function createAssistant(privateKey: string): Promise<string> {
       model: process.env.OPENROUTER_MODEL ?? "openai/gpt-4o-mini",
       systemPrompt: SYSTEM_PROMPT,
       temperature: 0.5,
-      tools,
+      // No tools here — they're at root level below
     },
     voice: {
       provider: "11labs",
@@ -231,6 +233,8 @@ async function createAssistant(privateKey: string): Promise<string> {
       recordingEnabled: true,
       videoRecordingEnabled: false,
     },
+    // Root-level tools: Vapi invokes server.url when the AI calls them
+    tools,
   };
 
   if (serverUrl) {
