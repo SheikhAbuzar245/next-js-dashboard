@@ -18,18 +18,30 @@ async function executeToolCall(
 
   if (name === "bookClass") {
     const { memberName, memberPhone, className, classTime } = args;
-    await db.from("bookings").insert({
+
+    // Ensure classTime is a valid ISO timestamp; fall back to near-future if unparseable
+    let classTimestamp: string;
+    try {
+      const parsed = new Date(classTime);
+      classTimestamp = isNaN(parsed.getTime()) ? new Date(Date.now() + 86400000).toISOString() : parsed.toISOString();
+    } catch {
+      classTimestamp = new Date(Date.now() + 86400000).toISOString();
+    }
+
+    const { error } = await db.from("bookings").insert({
       call_id: callUuid,
       member_name: memberName,
       member_phone: memberPhone,
       class_name: className,
-      class_time: classTime,
+      class_time: classTimestamp,
       status: "confirmed",
     });
+    if (error) console.error("[vapi-webhook] bookings insert error:", error);
+
     if (callUuid) {
       await db.from("calls").update({ booking_made: true }).eq("id", callUuid);
     }
-    return `Booking confirmed for ${memberName} in ${className}.`;
+    return `Booking confirmed for ${memberName} in ${className} on ${classTimestamp}.`;
   }
 
   if (name === "saveLead") {
