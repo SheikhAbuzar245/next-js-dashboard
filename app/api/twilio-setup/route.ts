@@ -95,6 +95,48 @@ export async function POST(request: Request) {
   }
 }
 
+// PATCH — link existing Twilio number to the current assistant
+export async function PATCH() {
+  try {
+    // Get the registered Twilio number
+    const listRes = await fetch(`${VAPI_API}/phone-number`, { headers: authHeaders() });
+    if (!listRes.ok) {
+      return NextResponse.json({ error: "Failed to fetch phone numbers from Vapi" }, { status: 500 });
+    }
+    const numbers = await listRes.json();
+    const twilioNumber = Array.isArray(numbers)
+      ? numbers.find((n: { provider: string }) => n.provider === "twilio")
+      : null;
+
+    if (!twilioNumber) {
+      return NextResponse.json({ error: "No Twilio number registered in Vapi" }, { status: 404 });
+    }
+
+    // Get the current assistant
+    const assistantId = await getAssistantId();
+    if (!assistantId) {
+      return NextResponse.json({ error: "Assistant not found — visit /api/vapi-setup first" }, { status: 404 });
+    }
+
+    // Link the number to the assistant
+    const res = await fetch(`${VAPI_API}/phone-number/${twilioNumber.id}`, {
+      method: "PATCH",
+      headers: authHeaders(),
+      body: JSON.stringify({ assistantId }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      return NextResponse.json({ error: err }, { status: res.status });
+    }
+
+    return NextResponse.json({ success: true, phoneNumber: twilioNumber.number, assistantId });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
 // DELETE — unlink Twilio number from Vapi
 export async function DELETE(request: Request) {
   try {

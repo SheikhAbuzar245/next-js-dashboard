@@ -91,6 +91,21 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSyncAssistant = async () => {
+    setTwilioSaving(true);
+    setTwilioError(null);
+    try {
+      const res = await fetch("/api/twilio-setup", { method: "PATCH" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to sync assistant");
+      setTwilioStatus((prev) => prev ? { ...prev, assistantId: data.assistantId } : prev);
+    } catch (e) {
+      setTwilioError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTwilioSaving(false);
+    }
+  };
+
   const handleDisconnect = async () => {
     if (!twilioStatus?.phoneNumberId) return;
     setTwilioSaving(true);
@@ -182,13 +197,26 @@ export default function SettingsPage() {
             </div>
           ) : twilioStatus?.connected ? (
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-100">
+              <div className={`flex items-center justify-between p-3 rounded-lg border ${twilioStatus.assistantId ? "bg-green-50 border-green-100" : "bg-yellow-50 border-yellow-200"}`}>
                 <div>
-                  <p className="text-sm font-semibold text-green-800">{twilioStatus.phoneNumber}</p>
-                  <p className="text-xs text-green-600 mt-0.5">Routed to Sara — AI assistant active</p>
+                  <p className={`text-sm font-semibold ${twilioStatus.assistantId ? "text-green-800" : "text-yellow-800"}`}>{twilioStatus.phoneNumber}</p>
+                  <p className={`text-xs mt-0.5 ${twilioStatus.assistantId ? "text-green-600" : "text-yellow-700"}`}>
+                    {twilioStatus.assistantId ? "Routed to Sara — AI assistant active" : "Number connected but assistant not linked"}
+                  </p>
                 </div>
-                <CheckCircle className="w-5 h-5 text-green-500" />
+                {twilioStatus.assistantId
+                  ? <CheckCircle className="w-5 h-5 text-green-500" />
+                  : <AlertCircle className="w-5 h-5 text-yellow-500" />
+                }
               </div>
+
+              {!twilioStatus.assistantId && (
+                <Button size="sm" onClick={handleSyncAssistant} disabled={twilioSaving}>
+                  {twilioSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                  {twilioSaving ? "Linking..." : "Link Assistant to Number"}
+                </Button>
+              )}
+
               <p className="text-xs text-gray-400">
                 Incoming calls to this number are answered by Sara. Call logs appear in the{" "}
                 <span className="font-medium text-gray-600">Calls</span> tab automatically.
