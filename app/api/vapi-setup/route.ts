@@ -106,29 +106,7 @@ async function ensureCredential(
   }
 }
 
-async function deleteAssistantIfExists(privateKey: string): Promise<void> {
-  const listRes = await fetch(`${VAPI_API}/assistant`, {
-    headers: authHeaders(privateKey),
-  });
-  if (!listRes.ok) return;
-
-  const assistants = await listRes.json();
-  if (!Array.isArray(assistants)) return;
-
-  const existing = assistants.find((a: { name: string }) => a.name === ASSISTANT_NAME);
-  if (!existing) return;
-
-  await fetch(`${VAPI_API}/assistant/${existing.id}`, {
-    method: "DELETE",
-    headers: authHeaders(privateKey),
-  });
-  console.log(`[vapi-setup] Deleted old assistant ${existing.id}`);
-}
-
-async function createAssistant(privateKey: string): Promise<string> {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
-  const serverUrl = appUrl ? `${appUrl}/api/vapi-webhook` : null;
-
+function buildAssistantBody(serverUrl: string | null): Record<string, unknown> {
   const tools = serverUrl
     ? [
         {
@@ -187,7 +165,7 @@ async function createAssistant(privateKey: string): Promise<string> {
 
   const body: Record<string, unknown> = {
     name: ASSISTANT_NAME,
-    firstMessage: "Hello! Thank you for calling PowerFit Gym. This is Sara. How can I help you today?",
+    firstMessage: "Hey there! Thanks for calling PowerFit, this is Sara — what can I help you with today?",
     model: {
       provider: "openrouter",
       model: process.env.OPENROUTER_MODEL ?? "openai/gpt-4o-mini",
@@ -201,7 +179,7 @@ async function createAssistant(privateKey: string): Promise<string> {
       stability: 0.5,
       similarityBoost: 0.75,
     },
-    endCallMessage: "Thank you for calling PowerFit Gym. Have a great day!",
+    endCallMessage: "Thanks so much for calling PowerFit! Have an amazing day!",
     endCallPhrases: ["goodbye", "bye", "thank you bye", "that's all"],
     maxDurationSeconds: 300,
     artifactPlan: {
@@ -210,23 +188,73 @@ async function createAssistant(privateKey: string): Promise<string> {
     },
   };
 
-  if (serverUrl) {
-    body.serverUrl = serverUrl;
+  if (serverUrl) body.serverUrl = serverUrl;
+  return body;
+}
+
+// Upsert: PATCH if assistant already exists (preserves ID), POST if not
+async function upsertAssistant(privateKey: string): Promise<string> {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
+  const serverUrl = appUrl ? `${appUrl}/api/vapi-webhook` : null;
+  const body = buildAssistantBody(serverUrl);
+
+  // Check if assistant already exists by name
+  const listRes = await fetch(`${VAPI_API}/assistant`, { headers: authHeaders(privateKey) });
+  if (listRes.ok) {
+    const list = await listRes.json();
+    const existing = Array.isArray(list)
+      ? list.find((a: { name: string }) => a.name === ASSISTANT_NAME)
+      : null;
+
+    if (existing?.id) {
+      // PATCH — keeps the same ID, phone number link stays intact
+      const patchRes = await fetch(`${VAPI_API}/assistant/${existing.id}`, {
+        method: "PATCH",
+        headers: authHeaders(privateKey),
+        body: JSON.stringify(body),
+      });
+      if (!patchRes.ok) {
+        const err = await patchRes.text();
+        throw new Error(`Failed to update assistant (${patchRes.status}): ${err}`);
+      }
+      console.log(`[vapi-setup] Updated existing assistant ${existing.id}`);
+      return existing.id as string;
+    }
   }
 
+  // POST — create fresh
   const res = await fetch(`${VAPI_API}/assistant`, {
     method: "POST",
     headers: authHeaders(privateKey),
     body: JSON.stringify(body),
   });
-
   const assistant = await res.json();
   if (!res.ok) {
     throw new Error(`Failed to create assistant (${res.status}): ${JSON.stringify(assistant)}`);
   }
-
-  console.log(`[vapi-setup] Created assistant ${assistant.id}`);
+  console.log(`[vapi-setup] Created new assistant ${assistant.id}`);
   return assistant.id as string;
+}
+
+// After setup, ensure the Twilio phone number is linked to this assistant
+async function relinkPhoneNumber(privateKey: string, assistantId: string): Promise<void> {
+  const listRes = await fetch(`${VAPI_API}/phone-number`, { headers: authHeaders(privateKey) });
+  if (!listRes.ok) return;
+
+  const numbers = await listRes.json();
+  const twilioNumber = Array.isArray(numbers)
+    ? numbers.find((n: { provider: string; assistantId?: string }) => n.provider === "twilio")
+    : null;
+
+  if (!twilioNumber) return;
+  if (twilioNumber.assistantId === assistantId) return; // already linked
+
+  await fetch(`${VAPI_API}/phone-number/${twilioNumber.id}`, {
+    method: "PATCH",
+    headers: authHeaders(privateKey),
+    body: JSON.stringify({ assistantId }),
+  });
+  console.log(`[vapi-setup] Relinked phone number ${twilioNumber.number} to assistant ${assistantId}`);
 }
 
 let cachedAssistantId: string | null = null;
@@ -247,17 +275,19 @@ export async function GET() {
       const id = process.env.VAPI_ASSISTANT_ID;
       if (await assistantExists(privateKey, id)) {
         cachedAssistantId = id;
+        await relinkPhoneNumber(privateKey, id);
         return NextResponse.json({ assistantId: id });
       }
-      // ID is stale — fall through to recreate
+      // ID is stale — fall through to upsert
     }
 
-    // Validate cached ID
+    // Validate in-memory cached ID
     if (cachedAssistantId) {
       if (await assistantExists(privateKey, cachedAssistantId)) {
+        await relinkPhoneNumber(privateKey, cachedAssistantId);
         return NextResponse.json({ assistantId: cachedAssistantId });
       }
-      cachedAssistantId = null; // stale — recreate
+      cachedAssistantId = null; // stale — upsert
     }
 
     await Promise.all([
@@ -265,8 +295,8 @@ export async function GET() {
       ensureCredential(privateKey, "11labs", process.env.ELEVENLABS_API_KEY!),
     ]);
 
-    await deleteAssistantIfExists(privateKey);
-    cachedAssistantId = await createAssistant(privateKey);
+    cachedAssistantId = await upsertAssistant(privateKey);
+    await relinkPhoneNumber(privateKey, cachedAssistantId);
 
     return NextResponse.json({ assistantId: cachedAssistantId });
   } catch (error) {
