@@ -6,7 +6,9 @@ import CallsBarChart from "@/components/charts/CallsBarChart";
 import CallStatusDonut from "@/components/charts/CallStatusDonut";
 import LiveCallBanner from "@/components/LiveCallBanner";
 import CallAgentButton from "@/components/CallAgentButton";
+import RecentCallsCard from "@/components/cards/RecentCallsCard";
 import { format, subDays } from "date-fns";
+import type { Call } from "@/types";
 
 async function getOverviewData() {
   const db = createServiceClient();
@@ -17,17 +19,13 @@ async function getOverviewData() {
     { data: todayBookings },
     { data: todayLeads },
     { data: activeCalls },
+    { data: recentCalls },
   ] = await Promise.all([
     db.from("calls").select("status").gte("created_at", `${today}T00:00:00`),
-    db
-      .from("bookings")
-      .select("id")
-      .gte("created_at", `${today}T00:00:00`),
-    db
-      .from("members")
-      .select("id")
-      .gte("created_at", `${today}T00:00:00`),
+    db.from("bookings").select("id").gte("created_at", `${today}T00:00:00`),
+    db.from("members").select("id").gte("created_at", `${today}T00:00:00`),
     db.from("calls").select("id").eq("status", "active"),
+    db.from("calls").select("*").order("created_at", { ascending: false }).limit(5),
   ]);
 
   const totalCalls = todayCalls?.length ?? 0;
@@ -63,6 +61,7 @@ async function getOverviewData() {
     failed,
     chartData,
     hasActiveCall: (activeCalls?.length ?? 0) > 0,
+    recentCalls: (recentCalls ?? []) as Call[],
   };
 }
 
@@ -133,6 +132,8 @@ export default async function OverviewPage() {
           </CardContent>
         </Card>
       </div>
+
+      <RecentCallsCard calls={data.recentCalls} />
     </div>
   );
 }
