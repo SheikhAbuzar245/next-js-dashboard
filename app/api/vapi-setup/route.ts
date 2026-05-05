@@ -171,11 +171,16 @@ function buildAssistantBody(serverUrl: string | null): Record<string, unknown> {
   const body: Record<string, unknown> = {
     name: ASSISTANT_NAME,
     firstMessage: "Hey there! Thanks for calling PowerFit, this is Sara — what can I help you with today?",
+    transcriber: {
+      provider: "deepgram",
+      model: "nova-2-phonecall",
+      language: "en",
+    },
     model: {
       provider: "openai",
       model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
       systemPrompt: SYSTEM_PROMPT,
-      temperature: 0.5,
+      temperature: 0.3,
       tools,
     },
     voice: {
@@ -185,6 +190,8 @@ function buildAssistantBody(serverUrl: string | null): Record<string, unknown> {
       stability: 0.5,
       similarityBoost: 0.75,
     },
+    smartEndpointingEnabled: true,
+    responseDelaySeconds: 0,
     endCallMessage: "Thanks so much for calling PowerFit! Have an amazing day!",
     endCallPhrases: ["goodbye", "bye", "thank you bye", "that's all"],
     maxDurationSeconds: 300,
