@@ -172,6 +172,11 @@ function buildAssistantBody(serverUrl: string | null): Record<string, unknown> {
       systemPrompt: SYSTEM_PROMPT,
       temperature: 0.5,
       tools,
+      fillerInjectionEnabled: true,
+    },
+    backchannel: {
+      enabled: true,
+      words: ["mhm", "hmm", "got it", "okay", "sure", "I see", "right"],
     },
     voice: {
       provider: "11labs",
