@@ -167,8 +167,8 @@ function buildAssistantBody(serverUrl: string | null): Record<string, unknown> {
     name: ASSISTANT_NAME,
     firstMessage: "Hey there! Thanks for calling PowerFit, this is Sara — what can I help you with today?",
     model: {
-      provider: "openrouter",
-      model: process.env.OPENROUTER_MODEL ?? "openai/gpt-4o-mini",
+      provider: "openai",
+      model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
       systemPrompt: SYSTEM_PROMPT,
       temperature: 0.5,
       tools,
@@ -296,7 +296,7 @@ export async function GET() {
     }
 
     await Promise.all([
-      ensureCredential(privateKey, "openrouter", process.env.OPENROUTER_API_KEY!),
+      ensureCredential(privateKey, "openai", process.env.OPENAI_API_KEY!),
       ensureCredential(privateKey, "11labs", process.env.ELEVENLABS_API_KEY!),
     ]);
 
