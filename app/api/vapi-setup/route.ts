@@ -181,6 +181,7 @@ function buildAssistantBody(serverUrl: string | null): Record<string, unknown> {
     voice: {
       provider: "11labs",
       voiceId: process.env.ELEVENLABS_VOICE_ID ?? "EXAVITQu4vr4xnSDxMaL",
+      model: "eleven_flash_v2_5",
       stability: 0.5,
       similarityBoost: 0.75,
     },
