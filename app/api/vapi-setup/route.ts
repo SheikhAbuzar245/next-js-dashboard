@@ -190,7 +190,6 @@ function buildAssistantBody(serverUrl: string | null): Record<string, unknown> {
       stability: 0.5,
       similarityBoost: 0.75,
     },
-    smartEndpointingEnabled: true,
     responseDelaySeconds: 0,
     endCallMessage: "Thanks so much for calling PowerFit! Have an amazing day!",
     endCallPhrases: ["goodbye", "bye", "thank you bye", "that's all"],
