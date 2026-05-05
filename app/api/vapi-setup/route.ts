@@ -263,48 +263,21 @@ async function relinkPhoneNumber(privateKey: string, assistantId: string): Promi
   console.log(`[vapi-setup] Relinked phone number ${twilioNumber.number} to assistant ${assistantId}`);
 }
 
-let cachedAssistantId: string | null = null;
-
-async function assistantExists(privateKey: string, id: string): Promise<boolean> {
-  const res = await fetch(`${VAPI_API}/assistant/${id}`, {
-    headers: authHeaders(privateKey),
-  });
-  return res.ok;
-}
-
 export async function GET() {
   try {
     const privateKey = process.env.VAPI_PRIVATE_KEY!;
 
-    // Validate env-pinned ID before trusting it
-    if (process.env.VAPI_ASSISTANT_ID) {
-      const id = process.env.VAPI_ASSISTANT_ID;
-      if (await assistantExists(privateKey, id)) {
-        cachedAssistantId = id;
-        await relinkPhoneNumber(privateKey, id);
-        return NextResponse.json({ assistantId: id });
-      }
-      // ID is stale — fall through to upsert
-    }
-
-    // Validate in-memory cached ID
-    if (cachedAssistantId) {
-      if (await assistantExists(privateKey, cachedAssistantId)) {
-        await relinkPhoneNumber(privateKey, cachedAssistantId);
-        return NextResponse.json({ assistantId: cachedAssistantId });
-      }
-      cachedAssistantId = null; // stale — upsert
-    }
-
+    // Always register credentials and upsert (PATCH) the assistant so every
+    // Sync call pushes the latest config to Vapi — not just the first run.
     await Promise.all([
       ensureCredential(privateKey, "openai", process.env.OPENAI_API_KEY!),
       ensureCredential(privateKey, "11labs", process.env.ELEVENLABS_API_KEY!),
     ]);
 
-    cachedAssistantId = await upsertAssistant(privateKey);
-    await relinkPhoneNumber(privateKey, cachedAssistantId);
+    const assistantId = await upsertAssistant(privateKey);
+    await relinkPhoneNumber(privateKey, assistantId);
 
-    return NextResponse.json({ assistantId: cachedAssistantId });
+    return NextResponse.json({ assistantId });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[vapi-setup] Error:", message);
