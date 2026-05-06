@@ -105,11 +105,22 @@ async function handleCallStarted(db: DB, call: Record<string, unknown>) {
 
 async function handleCallEnded(db: DB, call: Record<string, unknown>) {
   const id = call.id as string;
+
+  // successEvaluation comes as "true"/"false" string or boolean from Vapi analysisPlan
+  const rawEval = call.successEvaluation;
+  const successEval = rawEval === true || rawEval === "true" || rawEval === "True"
+    ? true
+    : rawEval === false || rawEval === "false" || rawEval === "False"
+    ? false
+    : null;
+
   const payload = {
     status: "completed",
     duration: call.duration as number ?? null,
     transcript: call.transcript as string ?? null,
     summary: call.summary as string ?? null,
+    success_evaluation: successEval,
+    structured_data: (call.structuredData as Record<string, unknown>) ?? null,
     recording_url: call.recordingUrl as string ?? null,
     end_reason: call.endReason as string ?? null,
     ended_at: call.endedAt as string ?? new Date().toISOString(),

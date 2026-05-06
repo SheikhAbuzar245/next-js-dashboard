@@ -189,6 +189,27 @@ function buildAssistantBody(serverUrl: string | null): Record<string, unknown> {
       recordingEnabled: true,
       videoRecordingEnabled: false,
     },
+    analysisPlan: {
+      summaryPrompt: "Summarize this gym receptionist call in 2-3 sentences. Include: what the caller wanted, whether a booking was made or a lead was captured, and any key details like class name, date, or membership interest.",
+      successEvaluationPrompt: "Did Sara successfully help the caller? A call is successful if any of these were achieved: (1) a class booking was confirmed, (2) a lead was saved with name and phone, or (3) the caller's question was fully answered. Respond true or false.",
+      successEvaluationRubric: "PassFail",
+      structuredDataPrompt: "Extract key information from this call transcript.",
+      structuredDataSchema: {
+        type: "object",
+        properties: {
+          callerName: { type: "string", description: "Full name of the caller if mentioned" },
+          callerPhone: { type: "string", description: "Phone number of the caller if mentioned" },
+          classBooked: { type: "string", description: "Name of the class that was booked, if any" },
+          classDateTime: { type: "string", description: "Date and time of the booked class in ISO 8601, if any" },
+          interest: { type: "string", description: "What the caller was interested in — class, membership type, or general inquiry" },
+          outcome: {
+            type: "string",
+            enum: ["booking_confirmed", "lead_captured", "inquiry_only", "call_abandoned"],
+            description: "The overall outcome of the call",
+          },
+        },
+      },
+    },
   };
 
   if (serverUrl) body.serverUrl = serverUrl;

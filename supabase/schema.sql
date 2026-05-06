@@ -1,21 +1,27 @@
 -- Run this in your Supabase SQL editor
 
 CREATE TABLE IF NOT EXISTS calls (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  vapi_call_id    TEXT UNIQUE,
-  caller_phone    TEXT,
-  status          TEXT CHECK (status IN ('active', 'completed', 'missed', 'failed')),
-  duration        INT,
-  transcript      TEXT,
-  summary         TEXT,
-  recording_url   TEXT,
-  booking_made    BOOLEAN DEFAULT false,
-  lead_captured   BOOLEAN DEFAULT false,
-  end_reason      TEXT,
-  started_at      TIMESTAMP,
-  ended_at        TIMESTAMP,
-  created_at      TIMESTAMP DEFAULT now()
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  vapi_call_id        TEXT UNIQUE,
+  caller_phone        TEXT,
+  status              TEXT CHECK (status IN ('active', 'completed', 'missed', 'failed')),
+  duration            INT,
+  transcript          TEXT,
+  summary             TEXT,
+  success_evaluation  BOOLEAN,
+  structured_data     JSONB,
+  recording_url       TEXT,
+  booking_made        BOOLEAN DEFAULT false,
+  lead_captured       BOOLEAN DEFAULT false,
+  end_reason          TEXT,
+  started_at          TIMESTAMP,
+  ended_at            TIMESTAMP,
+  created_at          TIMESTAMP DEFAULT now()
 );
+
+-- Migration: run this if the table already exists
+-- ALTER TABLE calls ADD COLUMN IF NOT EXISTS success_evaluation BOOLEAN;
+-- ALTER TABLE calls ADD COLUMN IF NOT EXISTS structured_data JSONB;
 
 CREATE TABLE IF NOT EXISTS bookings (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
