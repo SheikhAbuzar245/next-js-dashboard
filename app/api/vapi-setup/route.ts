@@ -172,12 +172,9 @@ function buildAssistantBody(serverUrl: string | null): Record<string, unknown> {
       tools,
     },
     voice: {
-      provider: "11labs",
-      voiceId: process.env.ELEVENLABS_VOICE_ID ?? "EXAVITQu4vr4xnSDxMaL",
-      model: "eleven_flash_v2_5",
-      stability: 0.5,
-      similarityBoost: 0.75,
-      optimizeStreamingLatency: 4,
+      provider: "cartesia",
+      voiceId: process.env.CARTESIA_VOICE_ID ?? "15628352-2ede-4f1b-89e6-ceda0c983fbc",
+      model: "sonic-2",
       chunkPlan: {
         enabled: true,
         minCharacters: 30,
@@ -271,7 +268,7 @@ export async function GET() {
     // Sync call pushes the latest config to Vapi — not just the first run.
     await Promise.all([
       ensureCredential(privateKey, "openai", process.env.OPENAI_API_KEY!),
-      ensureCredential(privateKey, "11labs", process.env.ELEVENLABS_API_KEY!),
+      ensureCredential(privateKey, "cartesia", process.env.CARTESIA_API_KEY!),
     ]);
 
     const assistantId = await upsertAssistant(privateKey);
