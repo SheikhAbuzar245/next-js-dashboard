@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
 
+export const runtime = "edge";
+
 type DB = ReturnType<typeof createServiceClient>;
 
 // ─── tool execution ────────────────────────────────────────────────────────
@@ -11,15 +13,9 @@ async function executeToolCall(
   args: Record<string, string>,
   vapiCallId: string | null
 ): Promise<string> {
-  const { data: call } = vapiCallId
-    ? await db.from("calls").select("id").eq("vapi_call_id", vapiCallId).single()
-    : { data: null };
-  const callUuid = call?.id ?? null;
-
   if (name === "bookClass") {
     const { memberName, memberPhone, className, classTime } = args;
 
-    // Ensure classTime is a valid ISO timestamp; fall back to near-future if unparseable
     let classTimestamp: string;
     try {
       const parsed = new Date(classTime);
@@ -28,33 +24,48 @@ async function executeToolCall(
       classTimestamp = new Date(Date.now() + 86400000).toISOString();
     }
 
-    const { error } = await db.from("bookings").insert({
-      call_id: callUuid,
-      member_name: memberName,
-      member_phone: memberPhone,
-      class_name: className,
-      class_time: classTimestamp,
-      status: "confirmed",
-    });
-    if (error) console.error("[vapi-webhook] bookings insert error:", error);
+    // Fire DB writes in background — don't block Sara's response
+    void (async () => {
+      const { data: call } = vapiCallId
+        ? await db.from("calls").select("id").eq("vapi_call_id", vapiCallId).single()
+        : { data: null };
+      const callUuid = call?.id ?? null;
+      const { error } = await db.from("bookings").insert({
+        call_id: callUuid,
+        member_name: memberName,
+        member_phone: memberPhone,
+        class_name: className,
+        class_time: classTimestamp,
+        status: "confirmed",
+      });
+      if (error) console.error("[vapi-webhook] bookings insert error:", error);
+      if (callUuid) {
+        await db.from("calls").update({ booking_made: true }).eq("id", callUuid);
+      }
+    })();
 
-    if (callUuid) {
-      await db.from("calls").update({ booking_made: true }).eq("id", callUuid);
-    }
     return `Booking confirmed for ${memberName} in ${className} on ${classTimestamp}.`;
   }
 
   if (name === "saveLead") {
     const { name: memberName, phone, interest, notes } = args;
-    await db
-      .from("members")
-      .upsert(
-        { call_id: callUuid, name: memberName, phone, interest, notes, status: "lead" },
-        { onConflict: "phone" }
-      );
-    if (callUuid) {
-      await db.from("calls").update({ lead_captured: true }).eq("id", callUuid);
-    }
+
+    void (async () => {
+      const { data: call } = vapiCallId
+        ? await db.from("calls").select("id").eq("vapi_call_id", vapiCallId).single()
+        : { data: null };
+      const callUuid = call?.id ?? null;
+      await db
+        .from("members")
+        .upsert(
+          { call_id: callUuid, name: memberName, phone, interest, notes, status: "lead" },
+          { onConflict: "phone" }
+        );
+      if (callUuid) {
+        await db.from("calls").update({ lead_captured: true }).eq("id", callUuid);
+      }
+    })();
+
     return `Lead saved for ${memberName}.`;
   }
 
@@ -186,12 +197,12 @@ export async function POST(request: Request) {
 
       if (msg.type === "status-update" || msg.type === "call-start") {
         const status = msg.status as string | undefined;
-        if (status === "in-progress" && call) await handleCallStarted(db, call);
-        if ((status === "ended" || status === "error") && call) await handleCallEnded(db, call);
+        if (status === "in-progress" && call) void handleCallStarted(db, call);
+        if ((status === "ended" || status === "error") && call) void handleCallEnded(db, call);
       }
 
       if (msg.type === "end-of-call-report" && call) {
-        await handleCallEnded(db, { ...call, ...(msg as Record<string, unknown>) });
+        void handleCallEnded(db, { ...call, ...(msg as Record<string, unknown>) });
       }
 
       return NextResponse.json({});
@@ -202,19 +213,18 @@ export async function POST(request: Request) {
     const event = body.event as string | undefined;
 
     if (event === "call.started") {
-      await handleCallStarted(db, body.call as Record<string, unknown>);
+      void handleCallStarted(db, body.call as Record<string, unknown>);
     } else if (event === "call.ended") {
-      await handleCallEnded(db, body.call as Record<string, unknown>);
+      void handleCallEnded(db, body.call as Record<string, unknown>);
     } else if (event === "tool.called") {
       const tool = body.tool as { name: string; parameters: Record<string, string>; toolCallId?: string };
       const callId = body.callId as string ?? null;
       const result = await executeToolCall(db, tool.name, tool.parameters, callId);
-      // Return result so the AI gets confirmation back
       if (tool.toolCallId) {
         return NextResponse.json({ results: [{ toolCallId: tool.toolCallId, result }] });
       }
     } else if (event === "call.missed") {
-      await handleMissedCall(db, body.call as Record<string, unknown>);
+      void handleMissedCall(db, body.call as Record<string, unknown>);
     }
 
     return NextResponse.json({});
