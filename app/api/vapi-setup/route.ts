@@ -173,7 +173,7 @@ function buildAssistantBody(serverUrl: string | null): Record<string, unknown> {
     },
     voice: {
       provider: "cartesia",
-      voiceId: process.env.CARTESIA_VOICE_ID ?? "15628352-2ede-4f1b-89e6-ceda0c983fbc",
+      voiceId: process.env.CARTESIA_VOICE_ID ?? "cec7cae1-ac8b-4a59-9eac-ec48366f37ae",
       model: "sonic-2",
       chunkPlan: {
         enabled: true,
