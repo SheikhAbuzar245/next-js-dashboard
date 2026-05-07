@@ -175,9 +175,9 @@ function buildAssistantBody(serverUrl: string | null): Record<string, unknown> {
       tools,
     },
     voice: {
-      provider: "cartesia",
-      voiceId: process.env.CARTESIA_VOICE_ID ?? "cec7cae1-ac8b-4a59-9eac-ec48366f37ae",
-      model: "sonic-2",
+      provider: "11labs",
+      voiceId: process.env.ELEVENLABS_VOICE_ID ?? "EXAVITQu4vr4xnSDxMaL",
+      model: "eleven_flash_v2_5",
     },
     responseDelaySeconds: 0,
     silenceTimeoutSeconds: 20,
