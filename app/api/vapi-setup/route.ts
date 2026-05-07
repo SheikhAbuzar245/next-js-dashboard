@@ -27,7 +27,7 @@ Weekdays 5am–11pm | Weekends 6am–10pm
 ## PRICING FLOW
 When asked about pricing, membership cost, or "how much":
 Say: "We've got three plans — monthly for forty-nine dollars, quarterly for one hundred twenty-nine dollars, or annual for four hundred forty-nine dollars. The annual plan saves you the most! Which one sounds good to you?"
-If they pick a plan or seem interested: call saveLead() with their name, phone, and the plan they mentioned as interest.
+Wait for the caller to respond. ONLY call saveLead() AFTER the caller explicitly picks a plan or says they want to join — never call any tool in the same turn as listing prices.
 
 ## OPENING
 Always start: "Hey there! Thanks for calling PowerFit, this is Sara — what can I help you with today?"
@@ -171,7 +171,7 @@ function buildAssistantBody(serverUrl: string | null): Record<string, unknown> {
       model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
       systemPrompt: SYSTEM_PROMPT,
       temperature: 0.7,
-      maxTokens: 120,
+      maxTokens: 200,
       tools,
     },
     voice: {
