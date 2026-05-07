@@ -289,6 +289,7 @@ export async function GET() {
     await Promise.all([
       ensureCredential(privateKey, "openai", process.env.OPENAI_API_KEY!),
       ensureCredential(privateKey, "cartesia", process.env.CARTESIA_API_KEY!),
+      ensureCredential(privateKey, "deepgram", process.env.DEEPGRAM_API_KEY!),
     ]);
 
     const assistantId = await upsertAssistant(privateKey);
