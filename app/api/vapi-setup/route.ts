@@ -195,6 +195,26 @@ function buildAssistantBody(serverUrl: string | null): Record<string, unknown> {
         "Anwar:5", "Arshad:5", "Aziz:5", "Farooq:5", "Haider:5", "Javed:5",
         "Mehmood:5", "Mughal:5", "Nawaz:5", "Niazi:5", "Raza:5", "Sadiq:5",
         "Saleem:5", "Sultan:5", "Waheed:5", "Yousaf:5", "Zafar:5", "Butt:5",
+        // Lebanese/Arabic male first names
+        "Ahmad:5", "Mohammed:5", "Mohamad:5", "Khalil:5", "Karim:5", "Nader:5",
+        "Rami:5", "Ziad:5", "Tarek:5", "Walid:5", "Bassam:5", "Elie:5",
+        "Charbel:5", "Fadi:5", "Hadi:5", "Nadim:5", "Rabih:5", "Mazen:5",
+        "Wissam:5", "Nabil:5", "Samer:5", "Jad:5", "Elias:5", "Youssef:5",
+        "Khaled:5", "Mahmoud:5", "Sleiman:5", "Marwan:5", "Ramzi:5", "Fouad:5",
+        "Imad:5", "Ghassan:5", "Ayman:5", "Bassel:5", "Fares:5", "Habib:5",
+        "Nassim:5", "Riad:5", "Toufic:5", "Wassim:5", "Zaki:5", "Jihad:5",
+        // Lebanese/Arabic female first names
+        "Lara:5", "Maya:5", "Rima:5", "Dima:5", "Joelle:5", "Carla:5",
+        "Fadia:5", "Ghada:5", "Hiba:5", "Jana:5", "Laila:5", "Lina:5",
+        "Nada:5", "Nadine:5", "Nesrine:5", "Rana:5", "Randa:5", "Rouba:5",
+        "Siham:5", "Souraya:5", "Yasmine:5", "Zeina:5", "Zeinab:5", "Amal:5",
+        "Dania:5", "Hala:5", "Mirna:5", "Nayla:5", "Reem:5", "Roula:5",
+        "Sabine:5", "Widad:5", "Pamela:5", "Tania:5",
+        // Lebanese surnames
+        "Khoury:5", "Haddad:5", "Sarkis:5", "Nassar:5", "Gemayel:5", "Hariri:5",
+        "Zgheib:5", "Barakat:5", "Daher:5", "Farhat:5", "Hanna:5", "Kassis:5",
+        "Mouawad:5", "Obeid:5", "Rahme:5", "Rizk:5", "Tabet:5", "Yammine:5",
+        "Abboud:5", "Hajj:5", "Nasr:5", "Saad:5", "Ghanem:5", "Lahham:5",
       ],
     },
     model: {
