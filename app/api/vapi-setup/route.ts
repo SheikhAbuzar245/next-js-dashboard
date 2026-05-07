@@ -21,7 +21,7 @@ TODAY: ${new Date().toISOString().split("T")[0]}
 - HIIT: Daily 5:30 AM
 
 ## PRICING & HOURS
-Monthly PKR 5,000 | Quarterly PKR 13,000 | Annual PKR 45,000
+Monthly forty-nine dollars | Quarterly one hundred twenty-nine dollars | Annual four hundred forty-nine dollars
 Weekdays 5am–11pm | Weekends 6am–10pm
 
 ## OPENING
