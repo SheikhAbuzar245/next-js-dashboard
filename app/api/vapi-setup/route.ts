@@ -163,8 +163,8 @@ function buildAssistantBody(serverUrl: string | null): Record<string, unknown> {
     name: ASSISTANT_NAME,
     firstMessage: "Hey there! Thanks for calling PowerFit, this is Sara — what can I help you with today?",
     transcriber: {
-      provider: "openai",
-      model: "gpt-4o-mini-transcribe",
+      provider: "deepgram",
+      model: "nova-3",
     },
     model: {
       provider: "openai",
@@ -175,8 +175,9 @@ function buildAssistantBody(serverUrl: string | null): Record<string, unknown> {
       tools,
     },
     voice: {
-      provider: "openai",
-      voiceId: "shimmer",
+      provider: "cartesia",
+      voiceId: process.env.CARTESIA_VOICE_ID ?? "cec7cae1-ac8b-4a59-9eac-ec48366f37ae",
+      model: "sonic-2",
     },
     responseDelaySeconds: 0,
     silenceTimeoutSeconds: 20,
