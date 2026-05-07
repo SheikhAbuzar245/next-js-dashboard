@@ -166,6 +166,36 @@ function buildAssistantBody(serverUrl: string | null): Record<string, unknown> {
     transcriber: {
       provider: "deepgram",
       model: "nova-3",
+      keywords: [
+        // Common Pakistani/South Asian male first names
+        "Abuzar:5", "Subhan:5", "Zubair:5", "Usman:5", "Hassan:5", "Hussain:5",
+        "Bilal:5", "Hamza:5", "Imran:5", "Tariq:5", "Kamran:5", "Adnan:5",
+        "Faisal:5", "Shahid:5", "Wasim:5", "Asad:5", "Sajid:5", "Rashid:5",
+        "Farhan:5", "Ahsan:5", "Arslan:5", "Asim:5", "Danish:5", "Fahad:5",
+        "Haroon:5", "Ibrahim:5", "Ismail:5", "Junaid:5", "Khurram:5", "Luqman:5",
+        "Nadeem:5", "Naveed:5", "Owais:5", "Qasim:5", "Rizwan:5", "Salman:5",
+        "Sarfraz:5", "Shoaib:5", "Tahir:5", "Umair:5", "Uzair:5", "Waqar:5",
+        "Yasir:5", "Zeeshan:5", "Muneeb:5", "Nouman:5", "Sohaib:5", "Talha:5",
+        "Waleed:5", "Aqib:5", "Saad:5", "Sohail:5", "Waqas:5", "Babar:5",
+        "Umer:5", "Usama:5", "Murad:5", "Mohsin:5", "Nabeel:5", "Naeem:5",
+        "Huzaifa:5", "Taimur:5", "Shehzad:5", "Kashif:5", "Daniyal:5", "Haseeb:5",
+        "Khizar:5", "Saqib:5", "Mubashir:5", "Furqan:5", "Mazhar:5", "Aamir:5",
+        // Common Pakistani/South Asian female first names
+        "Ayesha:5", "Fatima:5", "Zainab:5", "Maryam:5", "Sana:5", "Nadia:5",
+        "Hina:5", "Amna:5", "Rabia:5", "Saira:5", "Madiha:5", "Bushra:5",
+        "Komal:5", "Noor:5", "Khadija:5", "Rukhsar:5", "Sidra:5", "Shazia:5",
+        "Naila:5", "Mehwish:5", "Lubna:5", "Laraib:5", "Kinza:5", "Iqra:5",
+        "Hira:5", "Fozia:5", "Fiza:5", "Fareeha:5", "Dua:5", "Sadia:5",
+        "Sadaf:5", "Saba:5", "Nimra:5", "Misbah:5", "Maham:5", "Hajra:5",
+        "Faiza:5", "Eman:5", "Alina:5", "Aleena:5", "Anum:5", "Anam:5",
+        // Common Pakistani surnames
+        "Khan:5", "Malik:5", "Sheikh:5", "Chaudhry:5", "Rana:5", "Mirza:5",
+        "Siddiqui:5", "Qureshi:5", "Hashmi:5", "Bhatti:5", "Baig:5", "Abbasi:5",
+        "Zaidi:5", "Naqvi:5", "Gilani:5", "Asghar:5", "Ashraf:5", "Akhtar:5",
+        "Anwar:5", "Arshad:5", "Aziz:5", "Farooq:5", "Haider:5", "Javed:5",
+        "Mehmood:5", "Mughal:5", "Nawaz:5", "Niazi:5", "Raza:5", "Sadiq:5",
+        "Saleem:5", "Sultan:5", "Waheed:5", "Yousaf:5", "Zafar:5", "Butt:5",
+      ],
     },
     model: {
       provider: "openai",
