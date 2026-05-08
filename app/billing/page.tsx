@@ -11,14 +11,14 @@ async function getBillingData() {
 
   const { data: calls } = await db
     .from("calls")
-    .select("cost, cost_breakdown, created_at, duration, status")
+    .select("cost, cost_breakdown, twilio_cost, created_at, duration, status")
     .not("cost", "is", null)
     .order("created_at", { ascending: false });
 
   const allCalls = calls ?? [];
 
-  // Totals
-  const totalCost = allCalls.reduce((s, c) => s + (c.cost ?? 0), 0);
+  // Totals (Vapi cost + real Twilio cost)
+  const totalCost = allCalls.reduce((s, c) => s + (c.cost ?? 0) + (c.twilio_cost ?? 0), 0);
   const totalCalls = allCalls.length;
   const avgCostPerCall = totalCalls > 0 ? totalCost / totalCalls : 0;
   const totalDurationSec = allCalls.reduce((s, c) => s + (c.duration ?? 0), 0);
@@ -27,12 +27,12 @@ async function getBillingData() {
   // This week
   const sevenDaysAgo = subDays(new Date(), 6);
   const weekCalls = allCalls.filter((c) => new Date(c.created_at) >= sevenDaysAgo);
-  const costThisWeek = weekCalls.reduce((s, c) => s + (c.cost ?? 0), 0);
+  const costThisWeek = weekCalls.reduce((s, c) => s + (c.cost ?? 0) + (c.twilio_cost ?? 0), 0);
 
   // This month (last 30 days)
   const thirtyDaysAgo = subDays(new Date(), 29);
   const monthCalls = allCalls.filter((c) => new Date(c.created_at) >= thirtyDaysAgo);
-  const costThisMonth = monthCalls.reduce((s, c) => s + (c.cost ?? 0), 0);
+  const costThisMonth = monthCalls.reduce((s, c) => s + (c.cost ?? 0) + (c.twilio_cost ?? 0), 0);
 
   // Provider breakdown totals
   type ACB = { summary?: number; structuredData?: number; successEvaluation?: number };
@@ -44,15 +44,15 @@ async function getBillingData() {
   const providerTotals = allCalls.reduce(
     (acc, c) => {
       const b = (c.cost_breakdown ?? {}) as CB;
-      acc.transport += b.transport ?? 0;
-      acc.stt       += b.stt       ?? 0;
-      acc.llm       += b.llm       ?? 0;
-      acc.tts       += b.tts       ?? 0;
-      acc.vapi      += b.vapi      ?? 0;
-      acc.analysis  += getAnalysis(b);
+      acc.twilio   += c.twilio_cost ?? 0;
+      acc.stt      += b.stt        ?? 0;
+      acc.llm      += b.llm        ?? 0;
+      acc.tts      += b.tts        ?? 0;
+      acc.vapi     += b.vapi       ?? 0;
+      acc.analysis += getAnalysis(b);
       return acc;
     },
-    { transport: 0, stt: 0, llm: 0, tts: 0, vapi: 0, analysis: 0 }
+    { twilio: 0, stt: 0, llm: 0, tts: 0, vapi: 0, analysis: 0 }
   );
 
   // Daily cost breakdown (last 30 days)
@@ -63,12 +63,12 @@ async function getBillingData() {
     const b = (c: { cost_breakdown: unknown }) => (c.cost_breakdown ?? {}) as CB;
     return {
       day:      i % 5 === 0 ? format(d, "MMM d") : "",
-      transport: dayCalls.reduce((s, c) => s + (b(c).transport ?? 0), 0),
-      stt:       dayCalls.reduce((s, c) => s + (b(c).stt       ?? 0), 0),
-      llm:       dayCalls.reduce((s, c) => s + (b(c).llm       ?? 0), 0),
-      tts:       dayCalls.reduce((s, c) => s + (b(c).tts       ?? 0), 0),
-      vapi:      dayCalls.reduce((s, c) => s + (b(c).vapi      ?? 0), 0),
-      analysis:  dayCalls.reduce((s, c) => s + getAnalysis(b(c)), 0),
+      twilio:   dayCalls.reduce((s, c) => s + ((c as { twilio_cost?: number }).twilio_cost ?? 0), 0),
+      stt:      dayCalls.reduce((s, c) => s + (b(c).stt      ?? 0), 0),
+      llm:      dayCalls.reduce((s, c) => s + (b(c).llm      ?? 0), 0),
+      tts:      dayCalls.reduce((s, c) => s + (b(c).tts      ?? 0), 0),
+      vapi:     dayCalls.reduce((s, c) => s + (b(c).vapi     ?? 0), 0),
+      analysis: dayCalls.reduce((s, c) => s + getAnalysis(b(c)), 0),
     };
   });
 
@@ -145,7 +145,7 @@ export default async function BillingPage() {
               { label: "LLM — OpenAI", key: "llm", color: "bg-blue-500" },
               { label: "Analysis (AI)", key: "analysis", color: "bg-pink-500" },
               { label: "STT — Deepgram", key: "stt", color: "bg-amber-500" },
-              { label: "Telephony — Twilio", key: "transport", color: "bg-red-500" },
+              { label: "Telephony — Twilio", key: "twilio", color: "bg-red-500" },
             ].map(({ label, key, color }) => {
               const val = data.providerTotals[key as keyof typeof data.providerTotals];
               return (
@@ -214,10 +214,12 @@ export default async function BillingPage() {
               <tbody className="divide-y divide-gray-50">
                 {data.recentCalls.map((c, i) => {
                   type ACB2 = { summary?: number; structuredData?: number; successEvaluation?: number };
-                  type CB = { stt?: number; llm?: number; tts?: number; vapi?: number; transport?: number; analysisCostBreakdown?: ACB2 };
+                  type CB = { stt?: number; llm?: number; tts?: number; vapi?: number; analysisCostBreakdown?: ACB2 };
                   const b = (c.cost_breakdown ?? {}) as CB;
                   const a = b.analysisCostBreakdown ?? {};
                   const analysis = (a.summary ?? 0) + (a.structuredData ?? 0) + (a.successEvaluation ?? 0);
+                  const twilioCost = (c as { twilio_cost?: number }).twilio_cost ?? 0;
+                  const rowTotal = (c.cost ?? 0) + twilioCost;
                   return (
                     <tr key={i} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 text-gray-600 text-xs">
@@ -226,13 +228,13 @@ export default async function BillingPage() {
                       <td className="px-4 py-3 text-right text-gray-600 text-xs">
                         {c.duration ? formatCallDuration(c.duration) : "—"}
                       </td>
-                      <td className="px-4 py-3 text-right text-gray-600 text-xs">${(b.transport ?? 0).toFixed(4)}</td>
+                      <td className="px-4 py-3 text-right text-gray-600 text-xs">${twilioCost.toFixed(4)}</td>
                       <td className="px-4 py-3 text-right text-gray-600 text-xs">${(b.stt ?? 0).toFixed(4)}</td>
                       <td className="px-4 py-3 text-right text-gray-600 text-xs">${(b.llm ?? 0).toFixed(4)}</td>
                       <td className="px-4 py-3 text-right text-gray-600 text-xs">${(b.tts ?? 0).toFixed(4)}</td>
                       <td className="px-4 py-3 text-right text-gray-600 text-xs">${analysis.toFixed(4)}</td>
                       <td className="px-4 py-3 text-right text-gray-600 text-xs">${(b.vapi ?? 0).toFixed(4)}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-gray-900 text-xs">${(c.cost ?? 0).toFixed(4)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-gray-900 text-xs">${rowTotal.toFixed(4)}</td>
                     </tr>
                   );
                 })}
