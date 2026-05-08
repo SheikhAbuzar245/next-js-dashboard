@@ -269,7 +269,7 @@ function buildAssistantBody(serverUrl: string | null, systemPrompt = SYSTEM_PROM
 
 // Upsert: PATCH if assistant already exists (preserves ID), POST if not
 async function upsertAssistant(privateKey: string): Promise<string> {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/^﻿/, "").trim().replace(/\/$/, "");
   const serverUrl = appUrl ? `${appUrl}/api/vapi-webhook` : null;
 
   // Check if assistant already exists by name
@@ -348,7 +348,6 @@ export async function GET() {
     // Sync call pushes the latest config to Vapi — not just the first run.
     await Promise.all([
       ensureCredential(privateKey, "openai", process.env.OPENAI_API_KEY!),
-      ensureCredential(privateKey, "cartesia", process.env.CARTESIA_API_KEY!),
       ensureCredential(privateKey, "deepgram", process.env.DEEPGRAM_API_KEY!),
     ]);
 

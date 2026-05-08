@@ -38,4 +38,8 @@ Thumbs.db
 # claude code
 .claude/
 
+# google service account credentials
+*.json
+gym-ai-credential.json
+
 .vercel

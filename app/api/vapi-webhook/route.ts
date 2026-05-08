@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
-
-export const runtime = "edge";
+import { addCalendarEvent, appendLeadToSheet } from "@/lib/google";
 
 type DB = ReturnType<typeof createServiceClient>;
 
@@ -28,15 +27,24 @@ async function executeToolCall(
       ? await db.from("calls").select("id").eq("vapi_call_id", vapiCallId).single()
       : { data: null };
     const callUuid = call?.id ?? null;
-    const { error } = await db.from("bookings").insert({
-      call_id: callUuid,
-      member_name: memberName,
-      member_phone: memberPhone,
-      class_name: className,
-      class_time: classTimestamp,
-      status: "confirmed",
-    });
-    if (error) console.error("[vapi-webhook] bookings insert error:", error);
+    const [dbResult, calendarResult] = await Promise.allSettled([
+      db.from("bookings").insert({
+        call_id: callUuid,
+        member_name: memberName,
+        member_phone: memberPhone,
+        class_name: className,
+        class_time: classTimestamp,
+        status: "confirmed",
+      }),
+      addCalendarEvent({ memberName, memberPhone, className, classTime: classTimestamp }),
+    ]);
+
+    if (dbResult.status === "rejected" || (dbResult.status === "fulfilled" && dbResult.value?.error)) {
+      console.error("[vapi-webhook] bookings insert error:", dbResult.status === "rejected" ? dbResult.reason : dbResult.value.error);
+    }
+    if (calendarResult.status === "rejected") {
+      console.error("[vapi-webhook] Google Calendar error:", calendarResult.reason);
+    }
     if (callUuid) {
       await db.from("calls").update({ booking_made: true }).eq("id", callUuid);
     }
@@ -60,12 +68,18 @@ async function executeToolCall(
       ? await db.from("calls").select("id").eq("vapi_call_id", vapiCallId).single()
       : { data: null };
     const callUuid = call?.id ?? null;
-    await db
-      .from("members")
-      .upsert(
+
+    const [, sheetResult] = await Promise.allSettled([
+      db.from("members").upsert(
         { call_id: callUuid, name: memberName, phone, interest, notes, status: "lead" },
         { onConflict: "phone" }
-      );
+      ),
+      appendLeadToSheet({ name: memberName, phone, interest: interest ?? "", notes: notes ?? "" }),
+    ]);
+
+    if (sheetResult.status === "rejected") {
+      console.error("[vapi-webhook] Google Sheets error:", sheetResult.reason);
+    }
     if (callUuid) {
       await db.from("calls").update({ lead_captured: true }).eq("id", callUuid);
     }
