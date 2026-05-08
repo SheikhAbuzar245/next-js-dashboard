@@ -13,6 +13,7 @@ import {
   PhoneCall,
   Menu,
   X,
+  DollarSign,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useRef } from "react";
@@ -64,6 +65,7 @@ const navItems = [
   { href: "/bookings", label: "Bookings", icon: Calendar },
   { href: "/members", label: "Members", icon: Users },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/billing", label: "Billing", icon: DollarSign },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
