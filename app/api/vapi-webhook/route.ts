@@ -119,6 +119,8 @@ async function handleCallEnded(db: DB, call: Record<string, unknown>) {
     recording_url: call.recordingUrl as string ?? null,
     end_reason: call.endReason as string ?? null,
     ended_at: call.endedAt as string ?? new Date().toISOString(),
+    cost: call.cost as number ?? null,
+    cost_breakdown: (call.costBreakdown as Record<string, unknown>) ?? null,
   };
 
   const { data: existing } = await db.from("calls").select("id").eq("vapi_call_id", id).single();

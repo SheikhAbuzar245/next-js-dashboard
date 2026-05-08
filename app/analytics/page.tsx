@@ -7,7 +7,8 @@ import CallStatusDonut from "@/components/charts/CallStatusDonut";
 import BookingsTrendChart from "@/components/charts/BookingsTrendChart";
 import TopClassesPieChart from "@/components/charts/TopClassesPieChart";
 import PeakHoursHeatmap from "@/components/charts/PeakHoursHeatmap";
-import { TrendingUp, Phone, Calendar, Users } from "lucide-react";
+import CostBreakdownChart from "@/components/charts/CostBreakdownChart";
+import { TrendingUp, Phone, Calendar, Users, DollarSign } from "lucide-react";
 import { formatCallDuration } from "@/lib/utils";
 
 async function getAnalyticsData() {
@@ -21,12 +22,14 @@ async function getAnalyticsData() {
     { data: bookings30 },
     { data: allBookings },
     { data: allMembers },
+    { data: allCostCalls },
   ] = await Promise.all([
     db.from("calls").select("*").gte("created_at", sevenDaysAgo.toISOString()),
     db.from("analytics").select("*").gte("date", format(sevenDaysAgo, "yyyy-MM-dd")).order("date"),
     db.from("bookings").select("created_at").gte("created_at", thirtyDaysAgo.toISOString()),
     db.from("bookings").select("class_name"),
     db.from("members").select("status"),
+    db.from("calls").select("cost, cost_breakdown, created_at, duration").not("cost", "is", null),
   ]);
 
   const totalCalls = weekCalls?.length ?? 0;
@@ -73,6 +76,30 @@ async function getAnalyticsData() {
   // Peak hours heatmap from calls
   const heatmap = buildHeatmap(weekCalls ?? []);
 
+  // Cost analytics
+  type CostCall = { cost: number; cost_breakdown: Record<string, number> | null; created_at: string; duration: number | null };
+  const costCalls = (allCostCalls ?? []) as CostCall[];
+  const totalCost = costCalls.reduce((sum, c) => sum + (c.cost ?? 0), 0);
+  const avgCostPerCall = costCalls.length > 0 ? totalCost / costCalls.length : 0;
+  const totalDurationSec = costCalls.reduce((sum, c) => sum + (c.duration ?? 0), 0);
+  const costPerMinute = totalDurationSec > 0 ? (totalCost / (totalDurationSec / 60)) : 0;
+  const weekCostCalls = costCalls.filter((c) => new Date(c.created_at) >= sevenDaysAgo);
+  const costThisWeek = weekCostCalls.reduce((sum, c) => sum + (c.cost ?? 0), 0);
+
+  // Daily cost breakdown for chart (last 7 days)
+  const costChartData = Array.from({ length: 7 }, (_, i) => {
+    const d = subDays(new Date(), 6 - i);
+    const dayStr = format(d, "yyyy-MM-dd");
+    const dayCalls = costCalls.filter((c) => c.created_at.startsWith(dayStr));
+    return {
+      day: format(d, "EEE"),
+      stt:  dayCalls.reduce((s, c) => s + (c.cost_breakdown?.stt ?? 0), 0),
+      llm:  dayCalls.reduce((s, c) => s + (c.cost_breakdown?.llm ?? 0), 0),
+      tts:  dayCalls.reduce((s, c) => s + (c.cost_breakdown?.tts ?? 0), 0),
+      vapi: dayCalls.reduce((s, c) => s + (c.cost_breakdown?.vapi ?? 0), 0),
+    };
+  });
+
   return {
     totalCalls,
     completed,
@@ -87,6 +114,11 @@ async function getAnalyticsData() {
     heatmap,
     newLeads: allMembers?.filter((m) => m.status === "lead").length ?? 0,
     activeMembers: allMembers?.filter((m) => m.status === "active").length ?? 0,
+    totalCost,
+    avgCostPerCall,
+    costPerMinute,
+    costThisWeek,
+    costChartData,
   };
 }
 
@@ -158,6 +190,47 @@ export default async function AnalyticsPage() {
           <PeakHoursHeatmap data={data.heatmap} />
         </CardContent>
       </Card>
+
+      {/* ── Cost & Billing ─────────────────────────────────────────── */}
+      <div>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Cost & Billing</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          <StatCard
+            title="Total Spend (All Time)"
+            value={`$${data.totalCost.toFixed(4)}`}
+            icon={DollarSign}
+            iconColor="text-green-600"
+          />
+          <StatCard
+            title="This Week"
+            value={`$${data.costThisWeek.toFixed(4)}`}
+            icon={DollarSign}
+            iconColor="text-blue-600"
+          />
+          <StatCard
+            title="Avg Cost / Call"
+            value={`$${data.avgCostPerCall.toFixed(4)}`}
+            icon={DollarSign}
+            iconColor="text-purple-600"
+          />
+          <StatCard
+            title="Avg Cost / Min"
+            value={`$${data.costPerMinute.toFixed(4)}`}
+            icon={DollarSign}
+            iconColor="text-orange-600"
+          />
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Daily Cost Breakdown (Last 7 Days)</CardTitle>
+            <p className="text-xs text-gray-500 mt-1">Stacked by provider — STT (Deepgram) · LLM (OpenAI) · TTS (ElevenLabs) · Vapi platform</p>
+          </CardHeader>
+          <CardContent>
+            <CostBreakdownChart data={data.costChartData} />
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
