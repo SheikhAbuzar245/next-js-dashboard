@@ -66,14 +66,27 @@ function ChatTranscript({ messages, transcript }: { messages: CallMessage[] | nu
 export default function CallsTableClient({ calls }: CallsTableClientProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("");
+  const [search, setSearch] = useState<string>("");
 
-  const filtered = calls.filter((c) => (!filter ? true : c.status === filter));
+  const filtered = calls.filter((c) => {
+    const matchesStatus = !filter || c.status === filter;
+    const q = search.toLowerCase();
+    const matchesSearch = !q || (c.caller_phone ?? "").toLowerCase().includes(q);
+    return matchesStatus && matchesSearch;
+  });
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
       {/* Toolbar */}
       <div className="p-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
         <p className="font-semibold text-gray-900 text-sm shrink-0">{filtered.length} calls</p>
+        <input
+          type="text"
+          placeholder="Search by phone..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="flex-1 min-w-[160px] text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
         <div className="flex flex-wrap gap-2">
           {["", "completed", "missed", "active", "failed"].map((s) => (
             <button

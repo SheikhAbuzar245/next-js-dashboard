@@ -27,8 +27,9 @@ export interface Booking {
   call_id: string | null;
   member_name: string;
   member_phone: string;
+  member_email: string | null;
   class_name: string;
-  class_time: string;
+  class_time: string | null;
   status: "confirmed" | "cancelled" | "pending";
   notes: string | null;
   created_at: string;
