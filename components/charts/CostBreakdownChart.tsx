@@ -12,7 +12,7 @@ import {
 } from "recharts";
 
 interface CostBreakdownChartProps {
-  data: { day: string; stt: number; llm: number; tts: number; vapi: number }[];
+  data: { day: string; transport?: number; stt: number; llm: number; tts: number; vapi: number }[];
 }
 
 const fmt = (v: number) => `$${v.toFixed(4)}`;
@@ -29,10 +29,11 @@ export default function CostBreakdownChart({ data }: CostBreakdownChartProps) {
           contentStyle={{ borderRadius: "8px", border: "1px solid #e5e7eb", fontSize: "13px" }}
         />
         <Legend />
-        <Bar dataKey="vapi" stackId="a" fill="#6366f1" name="Vapi" radius={[0, 0, 0, 0]} />
-        <Bar dataKey="llm"  stackId="a" fill="#3b82f6" name="LLM" />
-        <Bar dataKey="tts"  stackId="a" fill="#10b981" name="TTS" />
-        <Bar dataKey="stt"  stackId="a" fill="#f59e0b" name="STT" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="vapi"      stackId="a" fill="#6366f1" name="Vapi"   radius={[0, 0, 0, 0]} />
+        <Bar dataKey="llm"       stackId="a" fill="#3b82f6" name="LLM" />
+        <Bar dataKey="tts"       stackId="a" fill="#10b981" name="TTS" />
+        <Bar dataKey="stt"       stackId="a" fill="#f59e0b" name="STT" />
+        <Bar dataKey="transport" stackId="a" fill="#ef4444" name="Twilio" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );

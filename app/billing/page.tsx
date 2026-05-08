@@ -35,17 +35,18 @@ async function getBillingData() {
   const costThisMonth = monthCalls.reduce((s, c) => s + (c.cost ?? 0), 0);
 
   // Provider breakdown totals
-  type CB = { stt?: number; llm?: number; tts?: number; vapi?: number; total?: number };
+  type CB = { stt?: number; llm?: number; tts?: number; vapi?: number; transport?: number; total?: number };
   const providerTotals = allCalls.reduce(
     (acc, c) => {
       const b = (c.cost_breakdown ?? {}) as CB;
-      acc.stt  += b.stt  ?? 0;
-      acc.llm  += b.llm  ?? 0;
-      acc.tts  += b.tts  ?? 0;
-      acc.vapi += b.vapi ?? 0;
+      acc.stt       += b.stt       ?? 0;
+      acc.llm       += b.llm       ?? 0;
+      acc.tts       += b.tts       ?? 0;
+      acc.vapi      += b.vapi      ?? 0;
+      acc.transport += b.transport ?? 0;
       return acc;
     },
-    { stt: 0, llm: 0, tts: 0, vapi: 0 }
+    { stt: 0, llm: 0, tts: 0, vapi: 0, transport: 0 }
   );
 
   // Daily cost breakdown (last 30 days)
@@ -53,12 +54,14 @@ async function getBillingData() {
     const d = subDays(new Date(), 29 - i);
     const dayStr = format(d, "yyyy-MM-dd");
     const dayCalls = allCalls.filter((c) => c.created_at.startsWith(dayStr));
+    const b = (c: { cost_breakdown: unknown }) => (c.cost_breakdown ?? {}) as CB;
     return {
-      day: i % 5 === 0 ? format(d, "MMM d") : "",
-      stt:  dayCalls.reduce((s, c) => s + (((c.cost_breakdown ?? {}) as CB).stt  ?? 0), 0),
-      llm:  dayCalls.reduce((s, c) => s + (((c.cost_breakdown ?? {}) as CB).llm  ?? 0), 0),
-      tts:  dayCalls.reduce((s, c) => s + (((c.cost_breakdown ?? {}) as CB).tts  ?? 0), 0),
-      vapi: dayCalls.reduce((s, c) => s + (((c.cost_breakdown ?? {}) as CB).vapi ?? 0), 0),
+      day:       i % 5 === 0 ? format(d, "MMM d") : "",
+      transport: dayCalls.reduce((s, c) => s + (b(c).transport ?? 0), 0),
+      stt:       dayCalls.reduce((s, c) => s + (b(c).stt       ?? 0), 0),
+      llm:       dayCalls.reduce((s, c) => s + (b(c).llm       ?? 0), 0),
+      tts:       dayCalls.reduce((s, c) => s + (b(c).tts       ?? 0), 0),
+      vapi:      dayCalls.reduce((s, c) => s + (b(c).vapi      ?? 0), 0),
     };
   });
 
@@ -134,6 +137,7 @@ export default async function BillingPage() {
               { label: "TTS — ElevenLabs", key: "tts", color: "bg-emerald-500" },
               { label: "LLM — OpenAI", key: "llm", color: "bg-blue-500" },
               { label: "STT — Deepgram", key: "stt", color: "bg-amber-500" },
+              { label: "Telephony — Twilio", key: "transport", color: "bg-red-500" },
             ].map(({ label, key, color }) => {
               const val = data.providerTotals[key as keyof typeof data.providerTotals];
               return (
@@ -168,7 +172,7 @@ export default async function BillingPage() {
           <CardHeader>
             <CardTitle>Daily Cost Breakdown (Last 30 Days)</CardTitle>
             <p className="text-xs text-gray-500 mt-1">
-              Stacked by provider — STT · LLM · TTS · Vapi platform
+              Stacked by provider — Twilio · STT · LLM · TTS · Vapi platform
             </p>
           </CardHeader>
           <CardContent>
@@ -190,6 +194,7 @@ export default async function BillingPage() {
                 <tr className="border-b border-gray-100 bg-gray-50">
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                   <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Twilio</th>
                   <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">STT</th>
                   <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">LLM</th>
                   <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">TTS</th>
@@ -199,7 +204,7 @@ export default async function BillingPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {data.recentCalls.map((c, i) => {
-                  type CB = { stt?: number; llm?: number; tts?: number; vapi?: number };
+                  type CB = { stt?: number; llm?: number; tts?: number; vapi?: number; transport?: number };
                   const b = (c.cost_breakdown ?? {}) as CB;
                   return (
                     <tr key={i} className="hover:bg-gray-50 transition-colors">
@@ -209,6 +214,7 @@ export default async function BillingPage() {
                       <td className="px-4 py-3 text-right text-gray-600 text-xs">
                         {c.duration ? formatCallDuration(c.duration) : "—"}
                       </td>
+                      <td className="px-4 py-3 text-right text-gray-600 text-xs">${(b.transport ?? 0).toFixed(4)}</td>
                       <td className="px-4 py-3 text-right text-gray-600 text-xs">${(b.stt ?? 0).toFixed(4)}</td>
                       <td className="px-4 py-3 text-right text-gray-600 text-xs">${(b.llm ?? 0).toFixed(4)}</td>
                       <td className="px-4 py-3 text-right text-gray-600 text-xs">${(b.tts ?? 0).toFixed(4)}</td>
