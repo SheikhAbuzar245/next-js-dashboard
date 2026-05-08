@@ -35,18 +35,24 @@ async function getBillingData() {
   const costThisMonth = monthCalls.reduce((s, c) => s + (c.cost ?? 0), 0);
 
   // Provider breakdown totals
-  type CB = { stt?: number; llm?: number; tts?: number; vapi?: number; transport?: number; total?: number };
+  type ACB = { summary?: number; structuredData?: number; successEvaluation?: number };
+  type CB = { stt?: number; llm?: number; tts?: number; vapi?: number; transport?: number; total?: number; analysisCostBreakdown?: ACB };
+  const getAnalysis = (b: CB) => {
+    const a = b.analysisCostBreakdown ?? {};
+    return (a.summary ?? 0) + (a.structuredData ?? 0) + (a.successEvaluation ?? 0);
+  };
   const providerTotals = allCalls.reduce(
     (acc, c) => {
       const b = (c.cost_breakdown ?? {}) as CB;
+      acc.transport += b.transport ?? 0;
       acc.stt       += b.stt       ?? 0;
       acc.llm       += b.llm       ?? 0;
       acc.tts       += b.tts       ?? 0;
       acc.vapi      += b.vapi      ?? 0;
-      acc.transport += b.transport ?? 0;
+      acc.analysis  += getAnalysis(b);
       return acc;
     },
-    { stt: 0, llm: 0, tts: 0, vapi: 0, transport: 0 }
+    { transport: 0, stt: 0, llm: 0, tts: 0, vapi: 0, analysis: 0 }
   );
 
   // Daily cost breakdown (last 30 days)
@@ -56,12 +62,13 @@ async function getBillingData() {
     const dayCalls = allCalls.filter((c) => c.created_at.startsWith(dayStr));
     const b = (c: { cost_breakdown: unknown }) => (c.cost_breakdown ?? {}) as CB;
     return {
-      day:       i % 5 === 0 ? format(d, "MMM d") : "",
+      day:      i % 5 === 0 ? format(d, "MMM d") : "",
       transport: dayCalls.reduce((s, c) => s + (b(c).transport ?? 0), 0),
       stt:       dayCalls.reduce((s, c) => s + (b(c).stt       ?? 0), 0),
       llm:       dayCalls.reduce((s, c) => s + (b(c).llm       ?? 0), 0),
       tts:       dayCalls.reduce((s, c) => s + (b(c).tts       ?? 0), 0),
       vapi:      dayCalls.reduce((s, c) => s + (b(c).vapi      ?? 0), 0),
+      analysis:  dayCalls.reduce((s, c) => s + getAnalysis(b(c)), 0),
     };
   });
 
@@ -136,6 +143,7 @@ export default async function BillingPage() {
               { label: "Vapi Platform", key: "vapi", color: "bg-indigo-500" },
               { label: "TTS — ElevenLabs", key: "tts", color: "bg-emerald-500" },
               { label: "LLM — OpenAI", key: "llm", color: "bg-blue-500" },
+              { label: "Analysis (AI)", key: "analysis", color: "bg-pink-500" },
               { label: "STT — Deepgram", key: "stt", color: "bg-amber-500" },
               { label: "Telephony — Twilio", key: "transport", color: "bg-red-500" },
             ].map(({ label, key, color }) => {
@@ -172,7 +180,7 @@ export default async function BillingPage() {
           <CardHeader>
             <CardTitle>Daily Cost Breakdown (Last 30 Days)</CardTitle>
             <p className="text-xs text-gray-500 mt-1">
-              Stacked by provider — Twilio · STT · LLM · TTS · Vapi platform
+              Stacked by provider — Twilio · STT · LLM · TTS · Analysis · Vapi platform
             </p>
           </CardHeader>
           <CardContent>
@@ -198,14 +206,18 @@ export default async function BillingPage() {
                   <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">STT</th>
                   <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">LLM</th>
                   <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">TTS</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Analysis</th>
                   <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Vapi</th>
                   <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {data.recentCalls.map((c, i) => {
-                  type CB = { stt?: number; llm?: number; tts?: number; vapi?: number; transport?: number };
+                  type ACB2 = { summary?: number; structuredData?: number; successEvaluation?: number };
+                  type CB = { stt?: number; llm?: number; tts?: number; vapi?: number; transport?: number; analysisCostBreakdown?: ACB2 };
                   const b = (c.cost_breakdown ?? {}) as CB;
+                  const a = b.analysisCostBreakdown ?? {};
+                  const analysis = (a.summary ?? 0) + (a.structuredData ?? 0) + (a.successEvaluation ?? 0);
                   return (
                     <tr key={i} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 text-gray-600 text-xs">
@@ -218,6 +230,7 @@ export default async function BillingPage() {
                       <td className="px-4 py-3 text-right text-gray-600 text-xs">${(b.stt ?? 0).toFixed(4)}</td>
                       <td className="px-4 py-3 text-right text-gray-600 text-xs">${(b.llm ?? 0).toFixed(4)}</td>
                       <td className="px-4 py-3 text-right text-gray-600 text-xs">${(b.tts ?? 0).toFixed(4)}</td>
+                      <td className="px-4 py-3 text-right text-gray-600 text-xs">${analysis.toFixed(4)}</td>
                       <td className="px-4 py-3 text-right text-gray-600 text-xs">${(b.vapi ?? 0).toFixed(4)}</td>
                       <td className="px-4 py-3 text-right font-semibold text-gray-900 text-xs">${(c.cost ?? 0).toFixed(4)}</td>
                     </tr>
