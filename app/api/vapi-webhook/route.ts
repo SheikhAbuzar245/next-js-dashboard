@@ -28,11 +28,14 @@ async function sendBookingSMS(to: string, memberName: string, className: string,
   });
 }
 
-async function sendBookingEmail(memberName: string, memberPhone: string, className: string, classTime: string) {
+async function sendBookingEmail(memberName: string, memberPhone: string, className: string, classTime: string, memberEmail?: string) {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM ?? "onboarding@resend.dev";
-  const to = process.env.RESEND_NOTIFY_EMAIL;
-  if (!apiKey || !to) return;
+  const ownerEmail = process.env.RESEND_NOTIFY_EMAIL;
+  if (!apiKey) return;
+  const recipients = [ownerEmail, memberEmail].filter((e): e is string => Boolean(e));
+  if (recipients.length === 0) return;
+  const to = recipients.length === 1 ? recipients[0] : recipients;
 
   const date = new Date(classTime).toLocaleString("en-US", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
@@ -71,7 +74,7 @@ async function executeToolCall(
   vapiCallId: string | null
 ): Promise<string> {
   if (name === "bookClass") {
-    const { memberName, memberPhone, className, classTime } = args;
+    const { memberName, memberPhone, memberEmail, className, classTime } = args;
 
     let classTimestamp: string;
     try {
@@ -90,13 +93,14 @@ async function executeToolCall(
         call_id: callUuid,
         member_name: memberName,
         member_phone: memberPhone,
+        member_email: memberEmail ?? null,
         class_name: className,
         class_time: classTimestamp,
         status: "confirmed",
       }),
       addCalendarEvent({ memberName, memberPhone, className, classTime: classTimestamp }),
       sendBookingSMS(memberPhone, memberName, className, classTimestamp),
-      sendBookingEmail(memberName, memberPhone, className, classTimestamp),
+      sendBookingEmail(memberName, memberPhone, className, classTimestamp, memberEmail),
     ]);
 
     if (dbResult.status === "rejected" || (dbResult.status === "fulfilled" && dbResult.value?.error)) {
@@ -128,7 +132,7 @@ async function executeToolCall(
   }
 
   if (name === "saveLead") {
-    const { name: memberName, phone, interest, notes } = args;
+    const { name: memberName, phone, email, interest, notes } = args;
 
     const { data: call } = vapiCallId
       ? await db.from("calls").select("id").eq("vapi_call_id", vapiCallId).single()
@@ -137,7 +141,7 @@ async function executeToolCall(
 
     const [, sheetResult] = await Promise.allSettled([
       db.from("members").upsert(
-        { call_id: callUuid, name: memberName, phone, interest, notes, status: "lead" },
+        { call_id: callUuid, name: memberName, phone, email: email ?? null, interest, notes, status: "lead" },
         { onConflict: "phone" }
       ),
       appendLeadToSheet({ name: memberName, phone, interest: interest ?? "", notes: notes ?? "" }),

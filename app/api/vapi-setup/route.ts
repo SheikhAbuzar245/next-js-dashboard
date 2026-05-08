@@ -13,12 +13,12 @@ TODAY: ${new Date().toISOString().split("T")[0]}
 - Encourage nervous or new-to-fitness callers
 
 ## CLASSES
-- Yoga: Mon/Wed/Fri 6:00 AM
-- CrossFit: Tue/Thu/Sat 7:00 AM
-- Spinning: Mon/Wed/Fri 8:00 AM
-- Boxing: Mon/Tue/Thu 6:00 PM
-- Pilates: Wed/Fri 7:00 PM
-- HIIT: Daily 5:30 AM
+- Yoga: Monday, Wednesday, Friday at six AM
+- CrossFit: Tuesday, Thursday, Saturday at seven AM
+- Spinning: Monday, Wednesday, Friday at eight AM
+- Boxing: Monday, Tuesday, Thursday at six PM
+- Pilates: Wednesday, Friday at seven PM
+- HIIT: Daily at five thirty AM
 
 ## PRICING & HOURS
 Monthly forty-nine dollars | Quarterly one hundred twenty-nine dollars | Annual four hundred forty-nine dollars
@@ -41,9 +41,9 @@ Phone system injected: {{customer.number}}
 - CRITICAL: Never speak curly braces, the word "customer", "dot number", or any template/code text aloud. If you catch yourself about to say any of those — stop and ask for the number instead.
 
 ## BOOKING FLOW
-Collect one at a time: name → class → confirm day is valid → phone (skip if using calling number) → confirm summary → call bookClass()
-Confirm before booking: "Just to confirm — [name] for [class] on [day] at [time], number [phone]. All good?"
-After yes: call bookClass(), then "You're all set! I've got you down for [class] on [day] at [time]!"
+Collect one at a time: name → class → phone (skip if using calling number) → email → confirm summary → call bookClass()
+Confirm before booking: "Just to confirm — [name] for [class] on [day] at [time]. All good?"
+After yes: call bookClass(), then say: "You're all set! I've got you down for [class] on [day] at [time]! You'll get a confirmation text shortly."
 
 ## CORRECTIONS (before bookClass is called)
 Acknowledge → update only what changed → read full summary again → re-confirm → then call bookClass()
@@ -117,6 +117,7 @@ function buildAssistantBody(serverUrl: string | null, systemPrompt = SYSTEM_PROM
               properties: {
                 memberName: { type: "string", description: "Full name of the member" },
                 memberPhone: { type: "string", description: "Phone number of the member" },
+                memberEmail: { type: "string", description: "Email address of the member for booking confirmation" },
                 className: { type: "string", description: "Name of the class to book" },
                 classTime: { type: "string", description: "Class date and time in ISO 8601 format, e.g. 2026-05-12T06:00:00. Always compute the actual calendar date — never pass a day name or relative time." },
               },
@@ -135,6 +136,7 @@ function buildAssistantBody(serverUrl: string | null, systemPrompt = SYSTEM_PROM
               properties: {
                 name: { type: "string", description: "Full name" },
                 phone: { type: "string", description: "Phone number" },
+                email: { type: "string", description: "Email address of the lead" },
                 interest: { type: "string", description: "Which class or membership they are interested in" },
                 notes: { type: "string", description: "Any additional notes from the conversation" },
               },
@@ -223,13 +225,17 @@ function buildAssistantBody(serverUrl: string | null, systemPrompt = SYSTEM_PROM
       model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
       systemPrompt,
       temperature: 0.7,
-      maxTokens: 200,
+      maxTokens: 150,
       tools,
     },
     voice: {
       provider: "11labs",
       voiceId: process.env.ELEVENLABS_VOICE_ID ?? "EXAVITQu4vr4xnSDxMaL",
       model: "eleven_flash_v2_5",
+      stability: 0.35,
+      similarityBoost: 0.8,
+      style: 0.25,
+      optimizeStreamingLatency: 3,
     },
     responseDelaySeconds: 0,
     silenceTimeoutSeconds: 20,
@@ -281,20 +287,11 @@ async function upsertAssistant(privateKey: string): Promise<string> {
       : null;
 
     if (existing?.id) {
-      // Read current prompt from Vapi so we don't overwrite a custom one saved via Settings
-      let currentPrompt = SYSTEM_PROMPT;
-      const detailRes = await fetch(`${VAPI_API}/assistant/${existing.id}`, { headers: authHeaders(privateKey) });
-      if (detailRes.ok) {
-        const detail = await detailRes.json();
-        const saved = detail.model?.systemPrompt as string | undefined;
-        if (saved?.trim()) currentPrompt = saved;
-      }
-
       // PATCH — keeps the same ID, phone number link stays intact
       const patchRes = await fetch(`${VAPI_API}/assistant/${existing.id}`, {
         method: "PATCH",
         headers: authHeaders(privateKey),
-        body: JSON.stringify(buildAssistantBody(serverUrl, currentPrompt)),
+        body: JSON.stringify(buildAssistantBody(serverUrl)),
       });
       if (!patchRes.ok) {
         const err = await patchRes.text();
