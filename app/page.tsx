@@ -47,7 +47,8 @@ async function getOverviewData() {
     .order("date");
 
   const chartData = days.map((day, i) => {
-    const row = weekAnalytics?.[i];
+    const date = format(subDays(new Date(), 6 - i), "yyyy-MM-dd");
+    const row = weekAnalytics?.find((r) => r.date === date);
     return { day, calls: row?.total_calls ?? 0, bookings: row?.bookings_made ?? 0 };
   });
 
