@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import MembersTableClient from "@/components/tables/MembersTableClient";
 import LeadsFunnelChart from "@/components/charts/LeadsFunnelChart";
 import type { Member } from "@/types";
+import AutoRefresh from "@/components/shared/AutoRefresh";
 
 async function getMembersData() {
   const db = createServiceClient();
@@ -38,6 +39,7 @@ export default async function MembersPage() {
 
   return (
     <div className="space-y-6">
+      <AutoRefresh intervalMs={30000} />
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Members & Leads</h1>
         <p className="text-gray-500 text-sm mt-1">

@@ -13,7 +13,11 @@ import type { Call } from "@/types";
 
 async function getOverviewData() {
   const db = createServiceClient();
-  const today = new Date().toISOString().split("T")[0];
+  // Use PKT (UTC+5) for "today" so stats match the gym's local date
+  const PKT_OFFSET = 5 * 60 * 60 * 1000;
+  const pktNow = new Date(Date.now() + PKT_OFFSET);
+  const today = pktNow.toISOString().split("T")[0];
+  const todayStart = new Date(new Date(`${today}T00:00:00Z`).getTime() - PKT_OFFSET).toISOString();
 
   const [
     { data: todayCalls },
@@ -22,9 +26,9 @@ async function getOverviewData() {
     { data: activeCalls },
     { data: recentCalls },
   ] = await Promise.all([
-    db.from("calls").select("status").gte("created_at", `${today}T00:00:00`),
-    db.from("bookings").select("id").gte("created_at", `${today}T00:00:00`),
-    db.from("members").select("id").gte("created_at", `${today}T00:00:00`),
+    db.from("calls").select("status").gte("created_at", todayStart),
+    db.from("bookings").select("id").gte("created_at", todayStart),
+    db.from("members").select("id").gte("created_at", todayStart),
     db.from("calls").select("id").eq("status", "active"),
     db.from("calls").select("*").order("created_at", { ascending: false }).limit(5),
   ]);

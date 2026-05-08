@@ -184,6 +184,11 @@ export default function CallsTableClient({ calls }: CallsTableClientProps) {
                             {call.lead_captured && (
                               <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">Lead captured</span>
                             )}
+                            {call.success_evaluation !== null && call.success_evaluation !== undefined && (
+                              <span className={`px-2 py-0.5 rounded-full font-medium ${call.success_evaluation ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                                {call.success_evaluation ? "AI: Successful" : "AI: Unsuccessful"}
+                              </span>
+                            )}
                           </div>
 
                           {/* Summary */}

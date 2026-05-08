@@ -59,6 +59,7 @@ export default function CallAgentButton() {
   const startTimeRef = useRef<number>(0);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const callSavedRef = useRef(false);
+  const vapiCallIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -98,6 +99,7 @@ export default function CallAgentButton() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        vapiCallId: vapiCallIdRef.current ?? undefined,
         callerPhone: "web-call",
         status: "completed",
         duration,
@@ -137,7 +139,9 @@ export default function CallAgentButton() {
       const vapi = new Vapi(process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY!);
       vapiRef.current = vapi;
 
-      vapi.on("call-start", () => {
+      vapi.on("call-start", (callObj?: unknown) => {
+        const c = callObj as { id?: string } | undefined;
+        if (c?.id) vapiCallIdRef.current = c.id;
         startTimeRef.current = Date.now();
         callSavedRef.current = false;
         setStatus("active");
@@ -180,7 +184,9 @@ export default function CallAgentButton() {
 
       vapi.on("volume-level", (v: number) => setVolume(v));
 
-      await vapi.start(data.assistantId);
+      vapiCallIdRef.current = null;
+      const startResp = await vapi.start(data.assistantId) as { id?: string } | null | undefined;
+      if (startResp?.id && !vapiCallIdRef.current) vapiCallIdRef.current = startResp.id;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to start call");
       setStatus("idle");

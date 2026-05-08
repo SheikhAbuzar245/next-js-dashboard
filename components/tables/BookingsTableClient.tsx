@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
+import { Download } from "lucide-react";
 import type { Booking } from "@/types";
 
 interface BookingsTableClientProps {
@@ -33,6 +34,29 @@ export default function BookingsTableClient({ bookings: initialBookings }: Booki
     return matchesStatus && matchesSearch;
   });
 
+  const exportCSV = () => {
+    const headers = ["Member", "Phone", "Email", "Class", "Time", "Status", "Booked At"];
+    const rows = filtered.map((b) => [
+      b.member_name,
+      b.member_phone,
+      b.member_email ?? "",
+      b.class_name,
+      b.class_time ? format(new Date(b.class_time), "yyyy-MM-dd HH:mm") : "",
+      b.status,
+      format(new Date(b.created_at), "yyyy-MM-dd HH:mm"),
+    ]);
+    const csv = [headers, ...rows]
+      .map((r) => r.map((f) => `"${String(f).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `bookings-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const cancelBooking = async (id: string) => {
     setCancelling(id);
     try {
@@ -51,12 +75,37 @@ export default function BookingsTableClient({ bookings: initialBookings }: Booki
     }
   };
 
+  const restoreBooking = async (id: string) => {
+    setCancelling(id);
+    try {
+      const res = await fetch(`/api/bookings/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "confirmed" }),
+      });
+      if (res.ok) {
+        setBookings((prev) =>
+          prev.map((b) => (b.id === id ? { ...b, status: "confirmed" as const } : b))
+        );
+      }
+    } finally {
+      setCancelling(null);
+    }
+  };
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
       <div className="p-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
         <p className="font-semibold text-gray-900 text-sm shrink-0">
           {filtered.length} bookings
         </p>
+        <button
+          onClick={exportCSV}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+        >
+          <Download className="w-3.5 h-3.5" />
+          Export CSV
+        </button>
         <input
           type="text"
           placeholder="Search name, phone, class, email..."
@@ -119,15 +168,26 @@ export default function BookingsTableClient({ bookings: initialBookings }: Booki
                   {format(new Date(booking.created_at), "MMM d, h:mm a")}
                 </td>
                 <td className="px-4 py-3">
-                  {booking.status !== "cancelled" && (
-                    <button
-                      onClick={() => cancelBooking(booking.id)}
-                      disabled={cancelling === booking.id}
-                      className="text-xs px-2 py-1 bg-red-50 text-red-600 rounded hover:bg-red-100 disabled:opacity-50 font-medium whitespace-nowrap"
-                    >
-                      {cancelling === booking.id ? "..." : "Cancel"}
-                    </button>
-                  )}
+                  <div className="flex gap-1.5">
+                    {booking.status !== "cancelled" && (
+                      <button
+                        onClick={() => cancelBooking(booking.id)}
+                        disabled={cancelling === booking.id}
+                        className="text-xs px-2 py-1 bg-red-50 text-red-600 rounded hover:bg-red-100 disabled:opacity-50 font-medium whitespace-nowrap"
+                      >
+                        {cancelling === booking.id ? "..." : "Cancel"}
+                      </button>
+                    )}
+                    {booking.status === "cancelled" && (
+                      <button
+                        onClick={() => restoreBooking(booking.id)}
+                        disabled={cancelling === booking.id}
+                        className="text-xs px-2 py-1 bg-green-50 text-green-700 rounded hover:bg-green-100 disabled:opacity-50 font-medium whitespace-nowrap"
+                      >
+                        {cancelling === booking.id ? "..." : "Restore"}
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

@@ -100,11 +100,12 @@ function buildHeatmap(calls: { created_at: string | null }[]) {
     hours.forEach((h) => (grid[d][h] = 0));
   });
 
+  const PKT_OFFSET = 5 * 60 * 60 * 1000;
   calls.forEach((c) => {
     if (!c.created_at) return;
-    const date = new Date(c.created_at);
-    const dayIndex = (date.getDay() + 6) % 7;
-    const hour = date.getHours();
+    const pkt = new Date(new Date(c.created_at).getTime() + PKT_OFFSET);
+    const dayIndex = (pkt.getUTCDay() + 6) % 7;
+    const hour = pkt.getUTCHours();
     grid[days[dayIndex]][hour] += 1;
   });
 

@@ -5,6 +5,21 @@ export async function POST(request: Request) {
   const body = await request.json();
   const db = createServiceClient();
 
+  // Dedup: web calls are already saved by the webhook — just patch messages onto the existing record
+  if (body.vapiCallId) {
+    const { data: existing } = await db.from("calls").select("id").eq("vapi_call_id", body.vapiCallId).single();
+    if (existing) {
+      const { data: updated, error: updateError } = await db
+        .from("calls")
+        .update({ messages: body.messages ?? null })
+        .eq("vapi_call_id", body.vapiCallId)
+        .select()
+        .single();
+      if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+      return NextResponse.json(updated, { status: 200 });
+    }
+  }
+
   const { data, error } = await db
     .from("calls")
     .insert({

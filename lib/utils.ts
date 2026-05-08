@@ -23,6 +23,21 @@ export function formatPhone(phone: string | null): string {
   return phone;
 }
 
+// PKT = UTC+5 (Pakistan Standard Time)
+const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
+
+export function getPKTDateStr(): string {
+  return new Date(Date.now() + PKT_OFFSET_MS).toISOString().split("T")[0];
+}
+
+export function getPKTDayStartUTC(dateStr: string): string {
+  return new Date(new Date(`${dateStr}T00:00:00Z`).getTime() - PKT_OFFSET_MS).toISOString();
+}
+
+export function toPKT(utcTimestamp: string): Date {
+  return new Date(new Date(utcTimestamp).getTime() + PKT_OFFSET_MS);
+}
+
 export function getStatusColor(status: string): string {
   switch (status) {
     case "active":

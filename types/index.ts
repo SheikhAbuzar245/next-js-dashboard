@@ -16,6 +16,8 @@ export interface Call {
   recording_url: string | null;
   booking_made: boolean;
   lead_captured: boolean;
+  success_evaluation: boolean | null;
+  cost: number | null;
   end_reason: string | null;
   started_at: string | null;
   ended_at: string | null;

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
+import { Download } from "lucide-react";
 import type { Member } from "@/types";
 
 interface MembersTableClientProps {
@@ -32,6 +33,29 @@ export default function MembersTableClient({ members: initialMembers }: MembersT
     return matchesStatus && matchesSearch;
   });
 
+  const exportCSV = () => {
+    const headers = ["Name", "Phone", "Email", "Interest", "Status", "Notes", "Date"];
+    const rows = filtered.map((m) => [
+      m.name ?? "",
+      m.phone ?? "",
+      m.email ?? "",
+      m.interest ?? "",
+      m.status,
+      m.notes ?? "",
+      format(new Date(m.created_at), "yyyy-MM-dd HH:mm"),
+    ]);
+    const csv = [headers, ...rows]
+      .map((r) => r.map((f) => `"${String(f).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `members-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const updateStatus = async (id: string, status: Member["status"]) => {
     setUpdating(id);
     try {
@@ -56,6 +80,13 @@ export default function MembersTableClient({ members: initialMembers }: MembersT
         <p className="font-semibold text-gray-900 text-sm shrink-0">
           {filtered.length} members/leads
         </p>
+        <button
+          onClick={exportCSV}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+        >
+          <Download className="w-3.5 h-3.5" />
+          Export CSV
+        </button>
         <input
           type="text"
           placeholder="Search name, phone, email..."

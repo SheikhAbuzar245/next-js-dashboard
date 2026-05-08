@@ -154,6 +154,15 @@ async function executeToolCall(
       await db.from("calls").update({ lead_captured: true }).eq("id", callUuid);
     }
 
+    // Increment analytics leads_captured for today
+    const today = new Date().toISOString().split("T")[0];
+    const { data: analyticsRow } = await db.from("analytics").select("*").eq("date", today).single();
+    if (analyticsRow) {
+      await db.from("analytics").update({ leads_captured: (analyticsRow.leads_captured ?? 0) + 1 }).eq("date", today);
+    } else {
+      await db.from("analytics").insert({ date: today, total_calls: 0, completed_calls: 0, leads_captured: 1 });
+    }
+
     return `Lead saved for ${memberName}.`;
   }
 
@@ -232,10 +241,22 @@ async function handleCallEnded(db: DB, call: Record<string, unknown>) {
     ? false
     : null;
 
+  // Normalize messages from end-of-call-report into chat-bubble format
+  type RawMsg = { role?: string; message?: string; content?: string; secondsFromStart?: number };
+  const rawMsgs = (call.messages as RawMsg[] | undefined) ?? [];
+  const messages = rawMsgs
+    .filter((m) => m.role === "assistant" || m.role === "user")
+    .map((m) => ({
+      role: m.role as string,
+      content: (m.message ?? m.content ?? "") as string,
+      secondsFromStart: m.secondsFromStart ?? null,
+    }));
+
   const payload = {
     status: "completed",
     duration: call.duration as number ?? null,
     transcript: call.transcript as string ?? null,
+    messages: messages.length ? messages : null,
     summary: call.summary as string ?? null,
     success_evaluation: successEval,
     structured_data: (call.structuredData as Record<string, unknown>) ?? null,

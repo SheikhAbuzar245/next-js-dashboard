@@ -7,6 +7,7 @@ import DurationBarChart from "@/components/charts/DurationBarChart";
 import CallsTableClient from "@/components/tables/CallsTableClient";
 import type { Call } from "@/types";
 import { subDays } from "date-fns";
+import AutoRefresh from "@/components/shared/AutoRefresh";
 
 async function getCalls(): Promise<{ calls: Call[]; chartData: { day: string; avgDuration: number }[] }> {
   const db = createServiceClient();
@@ -48,6 +49,7 @@ export default async function CallsPage() {
 
   return (
     <div className="space-y-6">
+      <AutoRefresh intervalMs={30000} />
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Call Logs</h1>
         <p className="text-gray-500 text-sm mt-1">

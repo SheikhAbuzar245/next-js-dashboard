@@ -5,6 +5,7 @@ import BookingsTrendChart from "@/components/charts/BookingsTrendChart";
 import TopClassesPieChart from "@/components/charts/TopClassesPieChart";
 import BookingsTableClient from "@/components/tables/BookingsTableClient";
 import type { Booking } from "@/types";
+import AutoRefresh from "@/components/shared/AutoRefresh";
 
 async function getBookingsData() {
   const db = createServiceClient();
@@ -52,6 +53,7 @@ export default async function BookingsPage() {
 
   return (
     <div className="space-y-6">
+      <AutoRefresh intervalMs={30000} />
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Bookings</h1>
         <p className="text-gray-500 text-sm mt-1">
