@@ -89,6 +89,36 @@ function extractCallerPhone(call: Record<string, unknown>): string | null {
   return null;
 }
 
+async function fetchTwilioCost(callerPhone: string | null, startedAt: string | null): Promise<number | null> {
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  if (!sid || !token || !callerPhone || !startedAt) return null;
+
+  try {
+    const callTime = new Date(startedAt);
+    // Query Twilio for inbound calls from this number on this date
+    const dateStr = callTime.toISOString().split("T")[0];
+    const url = `https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls.json?From=${encodeURIComponent(callerPhone)}&StartTime>=${dateStr}&PageSize=50`;
+    const creds = btoa(`${sid}:${token}`);
+    const res = await fetch(url, { headers: { Authorization: `Basic ${creds}` } });
+    if (!res.ok) return null;
+
+    const json = await res.json() as { calls?: Array<{ start_time: string; price: string | null }> };
+    const twCalls = json.calls ?? [];
+
+    for (const tw of twCalls) {
+      if (!tw.price) continue;
+      const twTime = new Date(tw.start_time).getTime();
+      if (Math.abs(twTime - callTime.getTime()) <= 120000) {
+        return Math.abs(parseFloat(tw.price));
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function handleCallStarted(db: DB, call: Record<string, unknown>) {
   await db.from("calls").insert({
     vapi_call_id: call.id as string,
@@ -123,6 +153,9 @@ async function handleCallEnded(db: DB, call: Record<string, unknown>) {
     cost_breakdown: (call.costBreakdown as Record<string, unknown>) ?? null,
   };
 
+  const callerPhone = extractCallerPhone(call);
+  const startedAt = call.startedAt as string ?? null;
+
   const { data: existing } = await db.from("calls").select("id").eq("vapi_call_id", id).single();
 
   if (existing) {
@@ -130,10 +163,16 @@ async function handleCallEnded(db: DB, call: Record<string, unknown>) {
   } else {
     await db.from("calls").insert({
       vapi_call_id: id,
-      caller_phone: extractCallerPhone(call),
-      started_at: call.startedAt as string ?? null,
+      caller_phone: callerPhone,
+      started_at: startedAt,
       ...payload,
     });
+  }
+
+  // Fetch real Twilio cost and store it (best-effort, non-blocking to response)
+  const twilioCost = await fetchTwilioCost(callerPhone, startedAt);
+  if (twilioCost !== null) {
+    await db.from("calls").update({ twilio_cost: twilioCost }).eq("vapi_call_id", id);
   }
 
   const today = new Date().toISOString().split("T")[0];
