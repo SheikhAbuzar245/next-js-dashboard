@@ -6,11 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Save, Phone, Bot, Calendar, CheckCircle, XCircle, Loader2, AlertCircle } from "lucide-react";
 
 const GYM_CLASSES = [
-  { name: "Yoga", time: "6:00 AM", days: "Mon, Wed, Fri" },
-  { name: "CrossFit", time: "7:00 AM", days: "Tue, Thu, Sat" },
-  { name: "Spinning", time: "8:00 AM", days: "Mon, Wed, Fri" },
-  { name: "Boxing", time: "6:00 PM", days: "Mon, Tue, Thu" },
-  { name: "Pilates", time: "7:00 PM", days: "Wed, Fri" },
+  { name: "Yoga", time: "6:00 AM", days: "Monday, Wednesday, Friday" },
+  { name: "CrossFit", time: "7:00 AM", days: "Tuesday, Thursday, Saturday" },
+  { name: "Spinning", time: "8:00 AM", days: "Monday, Wednesday, Friday" },
+  { name: "Boxing", time: "6:00 PM", days: "Monday, Tuesday, Thursday" },
+  { name: "Pilates", time: "7:00 PM", days: "Wednesday, Friday" },
   { name: "HIIT", time: "5:30 AM", days: "Daily" },
 ];
 
@@ -375,8 +375,8 @@ export default function SettingsPage() {
         <CardContent>
           <div className="space-y-2">
             {[
-              { name: "bookClass", desc: "Books a fitness class for a member", params: "memberName, memberPhone, className, classTime" },
-              { name: "saveLead", desc: "Saves a new lead to the database", params: "name, phone, interest, notes" },
+              { name: "bookClass", desc: "Books a fitness class for a member", params: "memberName, memberPhone, memberEmail, className, classTime" },
+              { name: "saveLead", desc: "Saves a new lead to the database", params: "name, phone, email, interest, notes" },
               { name: "getMemberInfo", desc: "Looks up an existing member by phone number", params: "phone" },
             ].map((tool) => (
               <div key={tool.name} className="p-3 border border-gray-100 rounded-lg">

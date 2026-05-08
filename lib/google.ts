@@ -16,6 +16,7 @@ export function getGoogleAuth() {
 export async function addCalendarEvent(params: {
   memberName: string;
   memberPhone: string;
+  memberEmail?: string;
   className: string;
   classTime: string;
 }) {
@@ -26,13 +27,13 @@ export async function addCalendarEvent(params: {
   const calendar = google.calendar({ version: "v3", auth });
 
   const start = new Date(params.classTime);
-  const end = new Date(start.getTime() + 60 * 60 * 1000); // 1 hour duration
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
 
   await calendar.events.insert({
     calendarId,
     requestBody: {
       summary: `${params.className} — ${params.memberName}`,
-      description: `Member: ${params.memberName}\nPhone: ${params.memberPhone}`,
+      description: `Member: ${params.memberName}\nPhone: ${params.memberPhone}${params.memberEmail ? `\nEmail: ${params.memberEmail}` : ""}`,
       start: { dateTime: start.toISOString() },
       end: { dateTime: end.toISOString() },
     },
@@ -42,6 +43,7 @@ export async function addCalendarEvent(params: {
 export async function appendLeadToSheet(params: {
   name: string;
   phone: string;
+  email?: string;
   interest: string;
   notes: string;
 }) {
@@ -55,10 +57,10 @@ export async function appendLeadToSheet(params: {
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: sheetId,
-    range: "Sheet1!A:E",
+    range: "Sheet1!A:F",
     valueInputOption: "USER_ENTERED",
     requestBody: {
-      values: [[timestamp, params.name, params.phone, params.interest ?? "", params.notes ?? ""]],
+      values: [[timestamp, params.name, params.phone, params.email ?? "", params.interest ?? "", params.notes ?? ""]],
     },
   });
 }

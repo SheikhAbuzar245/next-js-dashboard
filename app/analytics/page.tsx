@@ -90,7 +90,7 @@ async function getAnalyticsData() {
   };
 }
 
-function buildHeatmap(calls: { started_at: string | null }[]) {
+function buildHeatmap(calls: { created_at: string | null }[]) {
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const hours = Array.from({ length: 24 }, (_, i) => i);
   const grid: Record<string, Record<number, number>> = {};
@@ -101,8 +101,8 @@ function buildHeatmap(calls: { started_at: string | null }[]) {
   });
 
   calls.forEach((c) => {
-    if (!c.started_at) return;
-    const date = new Date(c.started_at);
+    if (!c.created_at) return;
+    const date = new Date(c.created_at);
     const dayIndex = (date.getDay() + 6) % 7;
     const hour = date.getHours();
     grid[days[dayIndex]][hour] += 1;

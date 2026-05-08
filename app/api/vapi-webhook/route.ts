@@ -98,7 +98,7 @@ async function executeToolCall(
         class_time: classTimestamp,
         status: "confirmed",
       }),
-      addCalendarEvent({ memberName, memberPhone, className, classTime: classTimestamp }),
+      addCalendarEvent({ memberName, memberPhone, memberEmail, className, classTime: classTimestamp }),
       sendBookingSMS(memberPhone, memberName, className, classTimestamp),
       sendBookingEmail(memberName, memberPhone, className, classTimestamp, memberEmail),
     ]);
@@ -144,7 +144,7 @@ async function executeToolCall(
         { call_id: callUuid, name: memberName, phone, email: email ?? null, interest, notes, status: "lead" },
         { onConflict: "phone" }
       ),
-      appendLeadToSheet({ name: memberName, phone, interest: interest ?? "", notes: notes ?? "" }),
+      appendLeadToSheet({ name: memberName, phone, email: email ?? undefined, interest: interest ?? "", notes: notes ?? "" }),
     ]);
 
     if (sheetResult.status === "rejected") {
@@ -262,11 +262,10 @@ async function handleCallEnded(db: DB, call: Record<string, unknown>) {
     });
   }
 
-  // Fetch real Twilio cost and store it (best-effort, non-blocking to response)
-  const twilioCost = await fetchTwilioCost(callerPhone, startedAt);
-  if (twilioCost !== null) {
-    await db.from("calls").update({ twilio_cost: twilioCost }).eq("vapi_call_id", id);
-  }
+  // Fire-and-forget: fetch Twilio cost without blocking analytics update
+  fetchTwilioCost(callerPhone, startedAt).then((cost) => {
+    if (cost !== null) db.from("calls").update({ twilio_cost: cost }).eq("vapi_call_id", id);
+  }).catch(() => { /* ignore */ });
 
   const today = new Date().toISOString().split("T")[0];
   const { data: analytics } = await db.from("analytics").select("*").eq("date", today).single();

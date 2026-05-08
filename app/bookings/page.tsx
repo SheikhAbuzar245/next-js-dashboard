@@ -116,7 +116,7 @@ export default async function BookingsPage() {
                   <td className="px-4 py-3 text-gray-600">{booking.member_phone}</td>
                   <td className="px-4 py-3 text-gray-700 font-medium">{booking.class_name}</td>
                   <td className="px-4 py-3 text-gray-600 text-xs">
-                    {format(new Date(booking.class_time), "MMM d, h:mm a")}
+                    {booking.class_time ? format(new Date(booking.class_time), "MMM d, h:mm a") : "—"}
                   </td>
                   <td className="px-4 py-3">
                     <Badge variant={statusVariant(booking.status)}>{booking.status}</Badge>
