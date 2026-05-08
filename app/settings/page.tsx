@@ -5,16 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Save, Phone, Bot, Calendar, CheckCircle, XCircle, Loader2, AlertCircle } from "lucide-react";
 
-const DEFAULT_SYSTEM_PROMPT = `You are Sara, the AI receptionist for PowerFit Gym.
-Your job is to:
-- Help members book fitness classes
-- Answer questions about gym timings, pricing, and classes
-- Capture details of new leads interested in membership
-- Be friendly, natural, and concise
-
-Always collect the caller's name and phone number.
-When booking a class, confirm class name, date, and time.`;
-
 const GYM_CLASSES = [
   { name: "Yoga", time: "6:00 AM", days: "Mon, Wed, Fri" },
   { name: "CrossFit", time: "7:00 AM", days: "Tue, Thu, Sat" },
@@ -32,8 +22,19 @@ type TwilioStatus = {
 };
 
 export default function SettingsPage() {
-  const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
+  const [systemPrompt, setSystemPrompt] = useState("");
+  const [promptLoading, setPromptLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/assistant-settings")
+      .then((r) => r.json())
+      .then((d) => { if (d.systemPrompt) setSystemPrompt(d.systemPrompt); })
+      .catch(() => {})
+      .finally(() => setPromptLoading(false));
+  }, []);
 
   // Twilio state
   const [twilioStatus, setTwilioStatus] = useState<TwilioStatus | null>(null);
@@ -126,9 +127,23 @@ export default function SettingsPage() {
     }
   };
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const res = await fetch("/api/assistant-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ systemPrompt }),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch {
+      setSaveError("Failed to save prompt. Try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -149,18 +164,32 @@ export default function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <textarea
-            className="w-full h-48 text-sm border border-gray-200 rounded-lg p-3 font-mono resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={systemPrompt}
-            onChange={(e) => setSystemPrompt(e.target.value)}
-          />
-          <div className="mt-3 flex items-center justify-between">
-            <p className="text-xs text-gray-400">{systemPrompt.length} characters</p>
-            <Button onClick={handleSave} size="sm">
-              <Save className="w-4 h-4" />
-              {saved ? "Saved!" : "Save Prompt"}
-            </Button>
-          </div>
+          {promptLoading ? (
+            <div className="flex items-center gap-2 text-sm text-gray-400 py-6">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading current prompt...
+            </div>
+          ) : (
+            <>
+              <textarea
+                className="w-full h-64 text-sm border border-gray-200 rounded-lg p-3 font-mono resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={systemPrompt}
+                onChange={(e) => { setSystemPrompt(e.target.value); setSaveError(null); }}
+              />
+              <div className="mt-3 flex items-center justify-between">
+                <p className="text-xs text-gray-400">{systemPrompt.length} characters</p>
+                <Button onClick={handleSave} size="sm" disabled={saving}>
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  {saving ? "Saving..." : saved ? "Saved!" : "Save Prompt"}
+                </Button>
+              </div>
+              {saveError && (
+                <p className="mt-2 text-xs text-red-600 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5" /> {saveError}
+                </p>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -334,9 +363,7 @@ export default function SettingsPage() {
               </div>
             ))}
           </div>
-          <Button variant="outline" size="sm" className="mt-3 w-full">
-            + Add Class
-          </Button>
+          <p className="text-xs text-gray-400 mt-3">To add or change classes, update the system prompt above.</p>
         </CardContent>
       </Card>
 
@@ -349,9 +376,8 @@ export default function SettingsPage() {
           <div className="space-y-2">
             {[
               { name: "bookClass", desc: "Books a fitness class for a member", params: "memberName, memberPhone, className, classTime" },
-              { name: "checkAvailability", desc: "Checks if a class has available spots", params: "className, date" },
               { name: "saveLead", desc: "Saves a new lead to the database", params: "name, phone, interest, notes" },
-              { name: "getMemberInfo", desc: "Looks up an existing member", params: "phone" },
+              { name: "getMemberInfo", desc: "Looks up an existing member by phone number", params: "phone" },
             ].map((tool) => (
               <div key={tool.name} className="p-3 border border-gray-100 rounded-lg">
                 <div className="flex items-center justify-between">

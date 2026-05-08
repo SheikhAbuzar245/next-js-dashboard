@@ -41,6 +41,15 @@ async function executeToolCall(
       await db.from("calls").update({ booking_made: true }).eq("id", callUuid);
     }
 
+    // Increment analytics bookings_made for today
+    const today = new Date().toISOString().split("T")[0];
+    const { data: analyticsRow } = await db.from("analytics").select("*").eq("date", today).single();
+    if (analyticsRow) {
+      await db.from("analytics").update({ bookings_made: (analyticsRow.bookings_made ?? 0) + 1 }).eq("date", today);
+    } else {
+      await db.from("analytics").insert({ date: today, total_calls: 0, completed_calls: 0, bookings_made: 1 });
+    }
+
     return `Booking confirmed for ${memberName} in ${className} on ${classTimestamp}.`;
   }
 

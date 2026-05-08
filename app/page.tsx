@@ -7,6 +7,7 @@ import CallStatusDonut from "@/components/charts/CallStatusDonut";
 import LiveCallBanner from "@/components/layout/LiveCallBanner";
 import CallAgentButton from "@/components/shared/CallAgentButton";
 import RecentCallsCard from "@/components/cards/RecentCallsCard";
+import AutoRefresh from "@/components/shared/AutoRefresh";
 import { format, subDays } from "date-fns";
 import type { Call } from "@/types";
 
@@ -71,6 +72,7 @@ export default async function OverviewPage() {
 
   return (
     <div className="space-y-6">
+      <AutoRefresh intervalMs={30000} />
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Overview</h1>
         <p className="text-gray-500 text-sm mt-1">

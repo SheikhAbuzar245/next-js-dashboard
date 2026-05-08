@@ -103,7 +103,7 @@ export default async function BillingPage() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         <StatCard
           title="Total Spend (All Time)"
           value={`$${data.totalCost.toFixed(4)}`}
@@ -115,6 +115,12 @@ export default async function BillingPage() {
           value={`$${data.costThisMonth.toFixed(4)}`}
           icon={DollarSign}
           iconColor="text-blue-600"
+        />
+        <StatCard
+          title="This Week (7d)"
+          value={`$${data.costThisWeek.toFixed(4)}`}
+          icon={TrendingDown}
+          iconColor="text-teal-600"
         />
         <StatCard
           title="Avg Cost / Call"

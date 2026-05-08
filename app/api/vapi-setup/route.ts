@@ -104,7 +104,7 @@ async function ensureCredential(
   }
 }
 
-function buildAssistantBody(serverUrl: string | null): Record<string, unknown> {
+function buildAssistantBody(serverUrl: string | null, systemPrompt = SYSTEM_PROMPT): Record<string, unknown> {
   const tools = serverUrl
     ? [
         {
@@ -221,7 +221,7 @@ function buildAssistantBody(serverUrl: string | null): Record<string, unknown> {
     model: {
       provider: "openai",
       model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt,
       temperature: 0.7,
       maxTokens: 200,
       tools,
@@ -271,7 +271,6 @@ function buildAssistantBody(serverUrl: string | null): Record<string, unknown> {
 async function upsertAssistant(privateKey: string): Promise<string> {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
   const serverUrl = appUrl ? `${appUrl}/api/vapi-webhook` : null;
-  const body = buildAssistantBody(serverUrl);
 
   // Check if assistant already exists by name
   const listRes = await fetch(`${VAPI_API}/assistant`, { headers: authHeaders(privateKey) });
@@ -282,11 +281,20 @@ async function upsertAssistant(privateKey: string): Promise<string> {
       : null;
 
     if (existing?.id) {
+      // Read current prompt from Vapi so we don't overwrite a custom one saved via Settings
+      let currentPrompt = SYSTEM_PROMPT;
+      const detailRes = await fetch(`${VAPI_API}/assistant/${existing.id}`, { headers: authHeaders(privateKey) });
+      if (detailRes.ok) {
+        const detail = await detailRes.json();
+        const saved = detail.model?.systemPrompt as string | undefined;
+        if (saved?.trim()) currentPrompt = saved;
+      }
+
       // PATCH — keeps the same ID, phone number link stays intact
       const patchRes = await fetch(`${VAPI_API}/assistant/${existing.id}`, {
         method: "PATCH",
         headers: authHeaders(privateKey),
-        body: JSON.stringify(body),
+        body: JSON.stringify(buildAssistantBody(serverUrl, currentPrompt)),
       });
       if (!patchRes.ok) {
         const err = await patchRes.text();
@@ -301,7 +309,7 @@ async function upsertAssistant(privateKey: string): Promise<string> {
   const res = await fetch(`${VAPI_API}/assistant`, {
     method: "POST",
     headers: authHeaders(privateKey),
-    body: JSON.stringify(body),
+    body: JSON.stringify(buildAssistantBody(serverUrl)),
   });
   const assistant = await res.json();
   if (!res.ok) {
