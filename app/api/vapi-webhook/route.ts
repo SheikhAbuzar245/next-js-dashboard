@@ -328,10 +328,11 @@ export async function POST(request: Request) {
     const db = createServiceClient();
 
     // ── Format A: Vapi server-message format (used when serverUrl is set on assistant)
-    // Vapi sends { message: { type: "tool-calls" | "status-update" | ... }, call: {...} }
+    // Vapi sends { message: { type: "tool-calls" | "status-update" | ..., call: {...} } }
+    // call is inside body.message, not at top-level body.call
     const msg = body.message as Record<string, unknown> | undefined;
     if (msg) {
-      const call = body.call as Record<string, unknown> | undefined;
+      const call = (msg.call ?? body.call) as Record<string, unknown> | undefined;
       const callId = (call?.id ?? null) as string | null;
 
       if (msg.type === "tool-calls") {
