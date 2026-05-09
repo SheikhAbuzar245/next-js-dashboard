@@ -229,13 +229,10 @@ function buildAssistantBody(serverUrl: string | null, systemPrompt = SYSTEM_PROM
       tools,
     },
     voice: {
-      provider: "11labs",
-      voiceId: process.env.ELEVENLABS_VOICE_ID ?? "EXAVITQu4vr4xnSDxMaL",
-      model: "eleven_flash_v2_5",
-      stability: 0.35,
-      similarityBoost: 0.8,
-      style: 0.25,
-      optimizeStreamingLatency: 3,
+      provider: "cartesia",
+      voiceId: process.env.CARTESIA_VOICE_ID ?? "248be419-c632-4f23-adf1-5324ed7dbf1d",
+      model: "sonic-2",
+      language: "en",
     },
     responseDelaySeconds: 0,
     silenceTimeoutSeconds: 20,
@@ -346,6 +343,7 @@ export async function GET() {
     await Promise.all([
       ensureCredential(privateKey, "openai", process.env.OPENAI_API_KEY!),
       ensureCredential(privateKey, "deepgram", process.env.DEEPGRAM_API_KEY!),
+      ensureCredential(privateKey, "cartesia", process.env.CARTESIA_API_KEY!),
     ]);
 
     const assistantId = await upsertAssistant(privateKey);
