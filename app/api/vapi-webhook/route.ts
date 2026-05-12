@@ -68,7 +68,10 @@ async function sendBookingEmail(memberName: string, memberPhone: string, classNa
     }));
   }
 
-  await Promise.allSettled(sends);
+  const emailResults = await Promise.allSettled(sends);
+  emailResults.forEach((r, i) => {
+    if (r.status === "rejected") console.error(`[vapi-webhook] email send [${i}] error:`, r.reason);
+  });
 }
 
 // ─── analytics (fire-and-forget, never blocks the Vapi response) ───────────
