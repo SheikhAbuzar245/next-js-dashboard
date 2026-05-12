@@ -378,6 +378,7 @@ export default function SettingsPage() {
               { name: "bookClass", desc: "Books a fitness class for a member", params: "memberName, memberPhone, memberEmail, className, classTime" },
               { name: "saveLead", desc: "Saves a new lead to the database", params: "name, phone, email, interest, notes" },
               { name: "getMemberInfo", desc: "Looks up an existing member by phone number", params: "phone" },
+              { name: "checkAvailability", desc: "Returns active classes and schedules from the database", params: "className (optional)" },
             ].map((tool) => (
               <div key={tool.name} className="p-3 border border-gray-100 rounded-lg">
                 <div className="flex items-center justify-between">

@@ -43,7 +43,7 @@ Phone system injected: {{customer.number}}
 ## BOOKING FLOW
 Collect one at a time: name → class → phone (skip if using calling number) → email → confirm summary → call bookClass()
 Confirm before booking: "Just to confirm — [name] for [class] on [day] at [time]. All good?"
-After yes: call bookClass(), then say: "You're all set! I've got you down for [class] on [day] at [time]! You'll get a confirmation text shortly."
+After yes: call bookClass(), then say: "You're all set! I've got you down for [class] on [day] at [time]! You'll get a confirmation text and email shortly."
 
 ## CORRECTIONS (before bookClass is called)
 Acknowledge → update only what changed → read full summary again → re-confirm → then call bookClass()
@@ -156,6 +156,21 @@ function buildAssistantBody(serverUrl: string | null, systemPrompt = SYSTEM_PROM
                 phone: { type: "string", description: "Phone number to look up" },
               },
               required: ["phone"],
+            },
+          },
+          server: { url: serverUrl },
+        },
+        {
+          type: "function",
+          function: {
+            name: "checkAvailability",
+            description: "Check which fitness classes are available and get their schedules from the database",
+            parameters: {
+              type: "object",
+              properties: {
+                className: { type: "string", description: "Optional class name to filter (e.g. 'Yoga', 'CrossFit')" },
+              },
+              required: [],
             },
           },
           server: { url: serverUrl },

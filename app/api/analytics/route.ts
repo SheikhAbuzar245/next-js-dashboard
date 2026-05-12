@@ -43,7 +43,7 @@ export async function GET() {
     }
   });
 
-  // Top class
+  // Top class (last 7 days)
   const { data: bookings } = await db
     .from("bookings")
     .select("class_name")
@@ -56,14 +56,14 @@ export async function GET() {
   const topClass =
     Object.entries(classCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "—";
 
-  // AI performance
+  // AI performance — single query with all needed fields
   const { data: allCalls } = await db
     .from("calls")
-    .select("status, duration")
+    .select("status, duration, booking_made")
     .gte("created_at", `${sevenDaysAgoStr}T00:00:00`);
 
-  const resolved = allCalls?.filter((c) => c.status === "completed").length ?? 0;
   const total = allCalls?.length ?? 0;
+  const resolved = allCalls?.filter((c) => c.status === "completed").length ?? 0;
   const resolutionRate = total > 0 ? `${Math.round((resolved / total) * 100)}%` : "—";
 
   const durations = allCalls?.filter((c) => c.duration).map((c) => c.duration as number) ?? [];
@@ -71,17 +71,24 @@ export async function GET() {
     ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
     : 0;
 
-  const bookedCalls = allCalls?.filter((c) => {
-    return false; // we'll use booking_made flag below
-  }).length ?? 0;
-
-  const { data: allCallsWithBooking } = await db
-    .from("calls")
-    .select("booking_made")
-    .gte("created_at", `${sevenDaysAgoStr}T00:00:00`);
-
-  const bookedCount = allCallsWithBooking?.filter((c) => c.booking_made).length ?? 0;
+  const bookedCount = allCalls?.filter((c) => c.booking_made).length ?? 0;
   const bookingSuccessRate = total > 0 ? `${Math.round((bookedCount / total) * 100)}%` : "—";
+
+  // Peak hour — computed from call created_at timestamps
+  const hourCounts: number[] = Array(24).fill(0);
+  allCalls?.forEach((c) => {
+    // created_at is a string; extract UTC hour
+    const raw = (c as { created_at?: string }).created_at;
+    if (raw) {
+      const hour = new Date(raw).getUTCHours();
+      hourCounts[hour] += 1;
+    }
+  });
+  const peakHourIndex = hourCounts.indexOf(Math.max(...hourCounts));
+  const peakHourLabel =
+    total > 0
+      ? `${peakHourIndex % 12 || 12}${peakHourIndex < 12 ? "am" : "pm"} – ${(peakHourIndex + 1) % 12 || 12}${(peakHourIndex + 1) < 12 ? "am" : "pm"}`
+      : "—";
 
   return NextResponse.json({
     today: { totalCalls, completedCalls, missedCalls, bookingsMade, newLeads },
@@ -89,7 +96,7 @@ export async function GET() {
       callsPerDay,
       bookingsPerDay,
       topClass,
-      peakHour: "6pm – 7pm",
+      peakHour: peakHourLabel,
     },
     aiPerformance: {
       resolutionRate,

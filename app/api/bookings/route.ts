@@ -29,7 +29,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const { memberName, memberPhone, className, classTime, callId, notes } = body;
+  const { memberName, memberPhone, memberEmail, className, classTime, callId, notes } = body;
 
   const db = createServiceClient();
   const { data, error } = await db
@@ -38,6 +38,7 @@ export async function POST(request: Request) {
       call_id: callId ?? null,
       member_name: memberName,
       member_phone: memberPhone,
+      member_email: memberEmail ?? null,
       class_name: className,
       class_time: classTime,
       notes: notes ?? null,

@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS calls (
   status              TEXT CHECK (status IN ('active', 'completed', 'missed', 'failed')),
   duration            INT,
   transcript          TEXT,
+  messages            JSONB,
   summary             TEXT,
   success_evaluation  BOOLEAN,
   structured_data     JSONB,
@@ -14,6 +15,9 @@ CREATE TABLE IF NOT EXISTS calls (
   booking_made        BOOLEAN DEFAULT false,
   lead_captured       BOOLEAN DEFAULT false,
   end_reason          TEXT,
+  cost                FLOAT8,
+  cost_breakdown      JSONB,
+  twilio_cost         FLOAT8,
   started_at          TIMESTAMP,
   ended_at            TIMESTAMP,
   created_at          TIMESTAMP DEFAULT now()
@@ -28,6 +32,7 @@ CREATE TABLE IF NOT EXISTS bookings (
   call_id       UUID REFERENCES calls(id),
   member_name   TEXT NOT NULL,
   member_phone  TEXT NOT NULL,
+  member_email  TEXT,
   class_name    TEXT NOT NULL,
   class_time    TIMESTAMP NOT NULL,
   status        TEXT CHECK (status IN ('confirmed', 'cancelled', 'pending')) DEFAULT 'confirmed',
@@ -74,6 +79,13 @@ CREATE TABLE IF NOT EXISTS analytics (
 ALTER PUBLICATION supabase_realtime ADD TABLE calls;
 ALTER PUBLICATION supabase_realtime ADD TABLE bookings;
 ALTER PUBLICATION supabase_realtime ADD TABLE members;
+
+-- ─── Migrations: run these if tables already exist ───────────────────────────
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS member_email TEXT;
+ALTER TABLE calls    ADD COLUMN IF NOT EXISTS messages        JSONB;
+ALTER TABLE calls    ADD COLUMN IF NOT EXISTS cost            FLOAT8;
+ALTER TABLE calls    ADD COLUMN IF NOT EXISTS cost_breakdown  JSONB;
+ALTER TABLE calls    ADD COLUMN IF NOT EXISTS twilio_cost     FLOAT8;
 
 -- Sample classes
 INSERT INTO classes (name, instructor, schedule, capacity) VALUES

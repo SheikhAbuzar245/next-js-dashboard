@@ -2,6 +2,7 @@ import { createServiceClient } from "@/lib/supabase";
 import { format, subDays } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import StatCard from "@/components/cards/StatCard";
+import AutoRefresh from "@/components/shared/AutoRefresh";
 import CallsBarChart from "@/components/charts/CallsBarChart";
 import CallStatusDonut from "@/components/charts/CallStatusDonut";
 import BookingsTrendChart from "@/components/charts/BookingsTrendChart";
@@ -117,6 +118,7 @@ export default async function AnalyticsPage() {
 
   return (
     <div className="space-y-6">
+      <AutoRefresh intervalMs={30000} />
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
         <p className="text-gray-500 text-sm mt-1">Performance overview (last 7–30 days)</p>

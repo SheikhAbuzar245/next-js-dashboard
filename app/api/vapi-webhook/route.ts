@@ -33,9 +33,6 @@ async function sendBookingEmail(memberName: string, memberPhone: string, classNa
   const from = process.env.RESEND_FROM ?? "onboarding@resend.dev";
   const ownerEmail = process.env.RESEND_NOTIFY_EMAIL;
   if (!apiKey) return;
-  const recipients = [ownerEmail, memberEmail].filter((e): e is string => Boolean(e));
-  if (recipients.length === 0) return;
-  const to = recipients.length === 1 ? recipients[0] : recipients;
 
   const date = new Date(classTime).toLocaleString("en-US", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
@@ -43,26 +40,83 @@ async function sendBookingEmail(memberName: string, memberPhone: string, classNa
   });
 
   const resend = new Resend(apiKey);
-  await resend.emails.send({
-    from,
-    to,
-    subject: `New Booking: ${memberName} — ${className}`,
-    html: `
-      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
-        <h2 style="color:#1d4ed8;margin-bottom:4px">New Booking Confirmed</h2>
-        <p style="color:#6b7280;margin-top:0">PowerFit AI Receptionist</p>
-        <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0"/>
-        <table style="width:100%;border-collapse:collapse">
-          <tr><td style="padding:6px 0;color:#6b7280;width:120px">Member</td><td style="padding:6px 0;font-weight:600">${memberName}</td></tr>
-          <tr><td style="padding:6px 0;color:#6b7280">Phone</td><td style="padding:6px 0">${memberPhone}</td></tr>
-          <tr><td style="padding:6px 0;color:#6b7280">Class</td><td style="padding:6px 0;font-weight:600">${className}</td></tr>
-          <tr><td style="padding:6px 0;color:#6b7280">Date & Time</td><td style="padding:6px 0">${date}</td></tr>
-        </table>
-        <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0"/>
-        <p style="color:#9ca3af;font-size:12px">Sent by Sara, PowerFit AI Receptionist</p>
-      </div>
-    `,
-  });
+  const sends: Promise<unknown>[] = [];
+
+  // Owner notification
+  if (ownerEmail) {
+    sends.push(resend.emails.send({
+      from,
+      to: ownerEmail,
+      subject: `New Booking: ${memberName} — ${className}`,
+      html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+          <h2 style="color:#1d4ed8;margin-bottom:4px">New Booking Confirmed</h2>
+          <p style="color:#6b7280;margin-top:0">PowerFit AI Receptionist</p>
+          <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0"/>
+          <table style="width:100%;border-collapse:collapse">
+            <tr><td style="padding:6px 0;color:#6b7280;width:120px">Member</td><td style="padding:6px 0;font-weight:600">${memberName}</td></tr>
+            <tr><td style="padding:6px 0;color:#6b7280">Phone</td><td style="padding:6px 0">${memberPhone}</td></tr>
+            <tr><td style="padding:6px 0;color:#6b7280">Class</td><td style="padding:6px 0;font-weight:600">${className}</td></tr>
+            <tr><td style="padding:6px 0;color:#6b7280">Date & Time</td><td style="padding:6px 0">${date}</td></tr>
+          </table>
+          <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0"/>
+          <p style="color:#9ca3af;font-size:12px">Sent by Sara, PowerFit AI Receptionist</p>
+        </div>
+      `,
+    }));
+  }
+
+  // Member confirmation
+  if (memberEmail) {
+    sends.push(resend.emails.send({
+      from,
+      to: memberEmail,
+      subject: `Your ${className} booking is confirmed! ✅`,
+      html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+          <h2 style="color:#16a34a;margin-bottom:4px">You're all set, ${memberName}! 🎉</h2>
+          <p style="color:#6b7280;margin-top:0">Your class booking is confirmed.</p>
+          <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0"/>
+          <table style="width:100%;border-collapse:collapse">
+            <tr><td style="padding:6px 0;color:#6b7280;width:100px">Class</td><td style="padding:6px 0;font-weight:600">${className}</td></tr>
+            <tr><td style="padding:6px 0;color:#6b7280">When</td><td style="padding:6px 0;font-weight:600">${date}</td></tr>
+            <tr><td style="padding:6px 0;color:#6b7280">Where</td><td style="padding:6px 0">PowerFit Gym</td></tr>
+          </table>
+          <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0"/>
+          <p style="color:#374151">See you there! If you need to cancel or reschedule, give us a call.</p>
+          <p style="color:#9ca3af;font-size:12px;margin-top:24px">— Sara, PowerFit AI Receptionist</p>
+        </div>
+      `,
+    }));
+  }
+
+  await Promise.allSettled(sends);
+}
+
+// ─── analytics (fire-and-forget, never blocks the Vapi response) ───────────
+
+function bumpAnalytics(
+  db: DB,
+  increments: Partial<Record<"total_calls" | "completed_calls" | "missed_calls" | "bookings_made" | "leads_captured", number>>
+): void {
+  const today = new Date().toISOString().split("T")[0];
+  const fields = Object.keys(increments);
+  const selectFields = ["id", ...fields].join(", ");
+
+  void (async () => {
+    try {
+      const { data } = await db.from("analytics").select(selectFields).eq("date", today).maybeSingle();
+      const newVals: Record<string, number> = {};
+      for (const [key, inc] of Object.entries(increments)) {
+        newVals[key] = ((data as Record<string, number> | null)?.[key] ?? 0) + (inc ?? 1);
+      }
+      if (data) {
+        await db.from("analytics").update(newVals).eq("date", today);
+      } else {
+        await db.from("analytics").insert({ date: today, ...newVals });
+      }
+    } catch { /* ignore */ }
+  })();
 }
 
 // ─── tool execution ────────────────────────────────────────────────────────
@@ -73,106 +127,160 @@ async function executeToolCall(
   args: Record<string, string>,
   vapiCallId: string | null
 ): Promise<string> {
+
+  // ── checkAvailability ──────────────────────────────────────────────────
+  if (name === "checkAvailability") {
+    const { className } = args;
+
+    let query = db
+      .from("classes")
+      .select("name, instructor, schedule, capacity")
+      .eq("is_active", true);
+
+    if (className) query = query.ilike("name", `%${className}%`);
+
+    const { data: classes } = await query.order("name");
+
+    if (!classes || classes.length === 0) {
+      return className
+        ? `No class found matching "${className}". Available classes are: Yoga, CrossFit, Spinning, Boxing, Pilates, HIIT.`
+        : "No active classes available at this time.";
+    }
+
+    const lines = classes.map((c) => {
+      const s = c.schedule as { day?: string; time?: string } | null;
+      const when = s?.day && s?.time ? `${s.day} at ${s.time}` : "schedule TBD";
+      return `${c.name}${c.instructor ? ` with ${c.instructor}` : ""} — ${when} (capacity: ${c.capacity})`;
+    });
+
+    return `Available classes:\n${lines.join("\n")}`;
+  }
+
+  // ── bookClass ──────────────────────────────────────────────────────────
   if (name === "bookClass") {
     const { memberName, memberPhone, memberEmail, className, classTime } = args;
 
     let classTimestamp: string;
     try {
       const parsed = new Date(classTime);
-      classTimestamp = isNaN(parsed.getTime()) ? new Date(Date.now() + 86400000).toISOString() : parsed.toISOString();
+      classTimestamp = isNaN(parsed.getTime())
+        ? new Date(Date.now() + 86400000).toISOString()
+        : parsed.toISOString();
     } catch {
       classTimestamp = new Date(Date.now() + 86400000).toISOString();
     }
 
-    const { data: call } = vapiCallId
-      ? await db.from("calls").select("id").eq("vapi_call_id", vapiCallId).single()
+    // Look up call UUID for FK reference
+    const { data: callRow } = vapiCallId
+      ? await db.from("calls").select("id").eq("vapi_call_id", vapiCallId).maybeSingle()
       : { data: null };
-    const callUuid = call?.id ?? null;
-    const [dbResult, calendarResult, smsResult, emailResult] = await Promise.allSettled([
-      db.from("bookings").insert({
-        call_id: callUuid,
-        member_name: memberName,
-        member_phone: memberPhone,
-        member_email: memberEmail ?? null,
-        class_name: className,
-        class_time: classTimestamp,
-        status: "confirmed",
-      }),
-      addCalendarEvent({ memberName, memberPhone, memberEmail, className, classTime: classTimestamp }),
-      sendBookingSMS(memberPhone, memberName, className, classTimestamp),
-      sendBookingEmail(memberName, memberPhone, className, classTimestamp, memberEmail),
-    ]);
 
-    if (dbResult.status === "rejected" || (dbResult.status === "fulfilled" && dbResult.value?.error)) {
-      console.error("[vapi-webhook] bookings insert error:", dbResult.status === "rejected" ? dbResult.reason : dbResult.value.error);
-    }
-    if (calendarResult.status === "rejected") {
-      console.error("[vapi-webhook] Google Calendar error:", calendarResult.reason);
-    }
-    if (smsResult.status === "rejected") {
-      console.error("[vapi-webhook] SMS error:", smsResult.reason);
-    }
-    if (emailResult.status === "rejected") {
-      console.error("[vapi-webhook] Email error:", emailResult.reason);
-    }
-    if (callUuid) {
-      await db.from("calls").update({ booking_made: true }).eq("id", callUuid);
+    // ── Critical path: DB insert only ────────────────────────────────────
+    const { error: bookingError } = await db.from("bookings").insert({
+      call_id: callRow?.id ?? null,
+      member_name: memberName,
+      member_phone: memberPhone,
+      member_email: memberEmail ?? null,
+      class_name: className,
+      class_time: classTimestamp,
+      status: "confirmed",
+    });
+
+    if (bookingError) {
+      console.error("[vapi-webhook] bookings insert error:", bookingError);
+      return "I'm sorry, I wasn't able to complete the booking due to a technical issue. Please call us back and we'll get you sorted!";
     }
 
-    // Increment analytics bookings_made for today
-    const today = new Date().toISOString().split("T")[0];
-    const { data: analyticsRow } = await db.from("analytics").select("*").eq("date", today).single();
-    if (analyticsRow) {
-      await db.from("analytics").update({ bookings_made: (analyticsRow.bookings_made ?? 0) + 1 }).eq("date", today);
-    } else {
-      await db.from("analytics").insert({ date: today, total_calls: 0, completed_calls: 0, bookings_made: 1 });
+    // ── Fire-and-forget: notifications ────────────────────────────────────
+    void (async () => {
+      const results = await Promise.allSettled([
+        addCalendarEvent({ memberName, memberPhone, memberEmail, className, classTime: classTimestamp }),
+        sendBookingSMS(memberPhone, memberName, className, classTimestamp),
+        sendBookingEmail(memberName, memberPhone, className, classTimestamp, memberEmail),
+      ]);
+      const labels = ["calendar", "SMS", "email"];
+      results.forEach((r, i) => {
+        if (r.status === "rejected") console.error(`[vapi-webhook] ${labels[i]} error:`, r.reason);
+      });
+    })();
+
+    // ── Fire-and-forget: mark call as booked (by vapi_call_id, avoids race) ──
+    if (vapiCallId) {
+      void (async () => {
+        try {
+          await db.from("calls").update({ booking_made: true }).eq("vapi_call_id", vapiCallId);
+        } catch { /* ignore */ }
+      })();
     }
+
+    // ── Fire-and-forget: analytics ────────────────────────────────────────
+    bumpAnalytics(db, { bookings_made: 1 });
 
     return `Booking confirmed for ${memberName} in ${className} on ${classTimestamp}.`;
   }
 
+  // ── saveLead ───────────────────────────────────────────────────────────
   if (name === "saveLead") {
     const { name: memberName, phone, email, interest, notes } = args;
 
-    const { data: call } = vapiCallId
-      ? await db.from("calls").select("id").eq("vapi_call_id", vapiCallId).single()
+    const { data: callRow } = vapiCallId
+      ? await db.from("calls").select("id").eq("vapi_call_id", vapiCallId).maybeSingle()
       : { data: null };
-    const callUuid = call?.id ?? null;
 
-    const [, sheetResult] = await Promise.allSettled([
-      db.from("members").upsert(
-        { call_id: callUuid, name: memberName, phone, email: email ?? null, interest, notes, status: "lead" },
-        { onConflict: "phone" }
-      ),
-      appendLeadToSheet({ name: memberName, phone, email: email ?? undefined, interest: interest ?? "", notes: notes ?? "" }),
-    ]);
+    // ── Critical path: DB upsert only ────────────────────────────────────
+    const { error: leadError } = await db.from("members").upsert(
+      {
+        call_id: callRow?.id ?? null,
+        name: memberName,
+        phone,
+        email: email ?? null,
+        interest: interest ?? null,
+        notes: notes ?? null,
+        status: "lead",
+      },
+      { onConflict: "phone" }
+    );
 
-    if (sheetResult.status === "rejected") {
-      console.error("[vapi-webhook] Google Sheets error:", sheetResult.reason);
-    }
-    if (callUuid) {
-      await db.from("calls").update({ lead_captured: true }).eq("id", callUuid);
+    if (leadError) {
+      console.error("[vapi-webhook] saveLead error:", leadError);
     }
 
-    // Increment analytics leads_captured for today
-    const today = new Date().toISOString().split("T")[0];
-    const { data: analyticsRow } = await db.from("analytics").select("*").eq("date", today).single();
-    if (analyticsRow) {
-      await db.from("analytics").update({ leads_captured: (analyticsRow.leads_captured ?? 0) + 1 }).eq("date", today);
-    } else {
-      await db.from("analytics").insert({ date: today, total_calls: 0, completed_calls: 0, leads_captured: 1 });
+    // ── Fire-and-forget: Google Sheets ────────────────────────────────────
+    void (async () => {
+      try {
+        await appendLeadToSheet({
+          name: memberName,
+          phone,
+          email: email ?? undefined,
+          interest: interest ?? "",
+          notes: notes ?? "",
+        });
+      } catch (e) { console.error("[vapi-webhook] Google Sheets error:", e); }
+    })();
+
+    // ── Fire-and-forget: mark call as lead captured ───────────────────────
+    if (vapiCallId) {
+      void (async () => {
+        try {
+          await db.from("calls").update({ lead_captured: true }).eq("vapi_call_id", vapiCallId);
+        } catch { /* ignore */ }
+      })();
     }
+
+    // ── Fire-and-forget: analytics ────────────────────────────────────────
+    bumpAnalytics(db, { leads_captured: 1 });
 
     return `Lead saved for ${memberName}.`;
   }
 
+  // ── getMemberInfo ──────────────────────────────────────────────────────
   if (name === "getMemberInfo") {
     const { phone } = args;
     const { data: member } = await db
       .from("members")
       .select("name, status, interest")
       .eq("phone", phone)
-      .single();
+      .maybeSingle();
     if (!member) return "Member not found.";
     return `Found member: ${member.name}, status: ${member.status}, interest: ${member.interest ?? "not specified"}.`;
   }
@@ -183,8 +291,6 @@ async function executeToolCall(
 // ─── call event handlers ───────────────────────────────────────────────────
 
 function extractCallerPhone(call: Record<string, unknown>): string | null {
-  // Phone calls: caller number is in call.customer.number
-  // Web calls: call.phoneNumber is a string (or absent)
   const customer = call.customer as Record<string, unknown> | undefined;
   if (customer?.number) return customer.number as string;
   if (typeof call.phoneNumber === "string") return call.phoneNumber || null;
@@ -198,7 +304,6 @@ async function fetchTwilioCost(callerPhone: string | null, startedAt: string | n
 
   try {
     const callTime = new Date(startedAt);
-    // Query Twilio for inbound calls from this number on this date
     const dateStr = callTime.toISOString().split("T")[0];
     const url = `https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls.json?From=${encodeURIComponent(callerPhone)}&StartTime>=${dateStr}&PageSize=50`;
     const creds = btoa(`${sid}:${token}`);
@@ -233,15 +338,14 @@ async function handleCallStarted(db: DB, call: Record<string, unknown>) {
 async function handleCallEnded(db: DB, call: Record<string, unknown>) {
   const id = call.id as string;
 
-  // successEvaluation comes as "true"/"false" string or boolean from Vapi analysisPlan
   const rawEval = call.successEvaluation;
-  const successEval = rawEval === true || rawEval === "true" || rawEval === "True"
-    ? true
-    : rawEval === false || rawEval === "false" || rawEval === "False"
-    ? false
-    : null;
+  const successEval =
+    rawEval === true || rawEval === "true" || rawEval === "True"
+      ? true
+      : rawEval === false || rawEval === "false" || rawEval === "False"
+      ? false
+      : null;
 
-  // Normalize messages from end-of-call-report into chat-bubble format
   type RawMsg = { role?: string; message?: string; content?: string; secondsFromStart?: number };
   const rawMsgs = (call.messages as RawMsg[] | undefined) ?? [];
   const messages = rawMsgs
@@ -254,23 +358,23 @@ async function handleCallEnded(db: DB, call: Record<string, unknown>) {
 
   const payload = {
     status: "completed",
-    duration: call.duration as number ?? null,
-    transcript: call.transcript as string ?? null,
+    duration: (call.duration as number) ?? null,
+    transcript: (call.transcript as string) ?? null,
     messages: messages.length ? messages : null,
-    summary: call.summary as string ?? null,
+    summary: (call.summary as string) ?? null,
     success_evaluation: successEval,
     structured_data: (call.structuredData as Record<string, unknown>) ?? null,
-    recording_url: call.recordingUrl as string ?? null,
-    end_reason: call.endReason as string ?? null,
-    ended_at: call.endedAt as string ?? new Date().toISOString(),
-    cost: call.cost as number ?? null,
+    recording_url: (call.recordingUrl as string) ?? null,
+    end_reason: (call.endReason as string) ?? null,
+    ended_at: (call.endedAt as string) ?? new Date().toISOString(),
+    cost: (call.cost as number) ?? null,
     cost_breakdown: (call.costBreakdown as Record<string, unknown>) ?? null,
   };
 
   const callerPhone = extractCallerPhone(call);
-  const startedAt = call.startedAt as string ?? null;
+  const startedAt = (call.startedAt as string) ?? null;
 
-  const { data: existing } = await db.from("calls").select("id").eq("vapi_call_id", id).single();
+  const { data: existing } = await db.from("calls").select("id").eq("vapi_call_id", id).maybeSingle();
 
   if (existing) {
     await db.from("calls").update(payload).eq("vapi_call_id", id);
@@ -283,21 +387,16 @@ async function handleCallEnded(db: DB, call: Record<string, unknown>) {
     });
   }
 
-  // Fire-and-forget: fetch Twilio cost without blocking analytics update
-  fetchTwilioCost(callerPhone, startedAt).then((cost) => {
-    if (cost !== null) db.from("calls").update({ twilio_cost: cost }).eq("vapi_call_id", id);
-  }).catch(() => { /* ignore */ });
+  // Fire-and-forget: Twilio cost
+  void (async () => {
+    try {
+      const cost = await fetchTwilioCost(callerPhone, startedAt);
+      if (cost !== null) await db.from("calls").update({ twilio_cost: cost }).eq("vapi_call_id", id);
+    } catch { /* ignore */ }
+  })();
 
-  const today = new Date().toISOString().split("T")[0];
-  const { data: analytics } = await db.from("analytics").select("*").eq("date", today).single();
-  if (analytics) {
-    await db
-      .from("analytics")
-      .update({ completed_calls: analytics.completed_calls + 1, total_calls: analytics.total_calls + 1 })
-      .eq("date", today);
-  } else {
-    await db.from("analytics").insert({ date: today, total_calls: 1, completed_calls: 1 });
-  }
+  // Fire-and-forget: analytics (was blocking before)
+  bumpAnalytics(db, { total_calls: 1, completed_calls: 1 });
 }
 
 async function handleMissedCall(db: DB, call: Record<string, unknown>) {
@@ -308,16 +407,8 @@ async function handleMissedCall(db: DB, call: Record<string, unknown>) {
     started_at: (call.missedAt as string) ?? new Date().toISOString(),
   });
 
-  const today = new Date().toISOString().split("T")[0];
-  const { data: analytics } = await db.from("analytics").select("*").eq("date", today).single();
-  if (analytics) {
-    await db
-      .from("analytics")
-      .update({ missed_calls: analytics.missed_calls + 1, total_calls: analytics.total_calls + 1 })
-      .eq("date", today);
-  } else {
-    await db.from("analytics").insert({ date: today, total_calls: 1, missed_calls: 1 });
-  }
+  // Fire-and-forget: analytics (was blocking before)
+  bumpAnalytics(db, { total_calls: 1, missed_calls: 1 });
 }
 
 // ─── main handler ──────────────────────────────────────────────────────────
@@ -327,9 +418,7 @@ export async function POST(request: Request) {
     const body = await request.json() as Record<string, unknown>;
     const db = createServiceClient();
 
-    // ── Format A: Vapi server-message format (used when serverUrl is set on assistant)
-    // Vapi sends { message: { type: "tool-calls" | "status-update" | ..., call: {...} } }
-    // call is inside body.message, not at top-level body.call
+    // ── Format A: Vapi server-message format ──────────────────────────────
     const msg = body.message as Record<string, unknown> | undefined;
     if (msg) {
       const call = (msg.call ?? body.call) as Record<string, unknown> | undefined;
@@ -369,8 +458,7 @@ export async function POST(request: Request) {
       return NextResponse.json({});
     }
 
-    // ── Format B: Vapi webhook-event format (used when webhook URL is set in Vapi dashboard)
-    // Vapi sends { event: "call.started" | "call.ended" | "tool.called" | "call.missed", ... }
+    // ── Format B: Vapi webhook-event format ───────────────────────────────
     const event = body.event as string | undefined;
 
     if (event === "call.started") {
@@ -379,11 +467,12 @@ export async function POST(request: Request) {
       await handleCallEnded(db, body.call as Record<string, unknown>);
     } else if (event === "tool.called") {
       const tool = body.tool as { name: string; parameters: Record<string, string>; toolCallId?: string };
-      const callId = body.callId as string ?? null;
+      const callId = (body.callId as string) ?? null;
       const result = await executeToolCall(db, tool.name, tool.parameters, callId);
-      if (tool.toolCallId) {
-        return NextResponse.json({ results: [{ toolCallId: tool.toolCallId, result }] });
-      }
+      // Always return the result (was missing return when toolCallId absent)
+      return NextResponse.json({
+        results: [{ toolCallId: tool.toolCallId ?? "unknown", result }],
+      });
     } else if (event === "call.missed") {
       await handleMissedCall(db, body.call as Record<string, unknown>);
     }
