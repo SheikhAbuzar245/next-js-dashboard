@@ -244,7 +244,6 @@ function buildAssistantBody(serverUrl: string | null, systemPrompt = SYSTEM_PROM
         // Email domains and components
         "gmail:5", "yahoo:5", "hotmail:5", "outlook:5", "icloud:5",
         "googlemail:5", "protonmail:5", "live:5", "msn:5", "aol:5",
-        "dot com:3", "dot net:3", "dot org:3", "at sign:3",
       ],
     },
     model: {
