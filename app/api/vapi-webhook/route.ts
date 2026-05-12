@@ -2,31 +2,9 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
 import { addCalendarEvent, appendLeadToSheet } from "@/lib/google";
 import { Resend } from "resend";
+import { sendBookingSMS } from "@/lib/sms";
 
 type DB = ReturnType<typeof createServiceClient>;
-
-// ─── notifications ─────────────────────────────────────────────────────────
-
-async function sendBookingSMS(to: string, memberName: string, className: string, classTime: string) {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  const from = process.env.TWILIO_PHONE_NUMBER;
-  if (!sid || !token || !from) return;
-
-  const date = new Date(classTime).toLocaleString("en-US", {
-    weekday: "long", month: "short", day: "numeric",
-    hour: "numeric", minute: "2-digit", timeZone: "UTC",
-  });
-
-  const body = `Hi ${memberName}! ✅ Your ${className} class at PowerFit is confirmed for ${date}. See you then! Reply STOP to opt out.`;
-
-  const creds = btoa(`${sid}:${token}`);
-  await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
-    method: "POST",
-    headers: { Authorization: `Basic ${creds}`, "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ To: to, From: from, Body: body }).toString(),
-  });
-}
 
 async function sendBookingEmail(memberName: string, memberPhone: string, className: string, classTime: string, memberEmail?: string) {
   const apiKey = process.env.RESEND_API_KEY;
@@ -191,18 +169,17 @@ async function executeToolCall(
       return "I'm sorry, I wasn't able to complete the booking due to a technical issue. Please call us back and we'll get you sorted!";
     }
 
-    // ── Fire-and-forget: notifications ────────────────────────────────────
-    void (async () => {
-      const results = await Promise.allSettled([
-        addCalendarEvent({ memberName, memberPhone, memberEmail, className, classTime: classTimestamp }),
-        sendBookingSMS(memberPhone, memberName, className, classTimestamp),
-        sendBookingEmail(memberName, memberPhone, className, classTimestamp, memberEmail),
-      ]);
-      const labels = ["calendar", "SMS", "email"];
-      results.forEach((r, i) => {
-        if (r.status === "rejected") console.error(`[vapi-webhook] ${labels[i]} error:`, r.reason);
-      });
-    })();
+    // Await notifications before returning — ensures SMS/email are sent before
+    // the Vercel function instance is released. Tool calls tolerate 2-3s delay.
+    const notifResults = await Promise.allSettled([
+      addCalendarEvent({ memberName, memberPhone, memberEmail, className, classTime: classTimestamp }),
+      sendBookingSMS(memberPhone, memberName, className, classTimestamp),
+      sendBookingEmail(memberName, memberPhone, className, classTimestamp, memberEmail),
+    ]);
+    const notifLabels = ["calendar", "SMS", "email"];
+    notifResults.forEach((r, i) => {
+      if (r.status === "rejected") console.error(`[vapi-webhook] ${notifLabels[i]} error:`, r.reason);
+    });
 
     // ── Fire-and-forget: mark call as booked (by vapi_call_id, avoids race) ──
     if (vapiCallId) {

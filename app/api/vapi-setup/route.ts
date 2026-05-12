@@ -42,8 +42,16 @@ Phone system injected: {{customer.number}}
 
 ## BOOKING FLOW
 Collect one at a time: name → class → phone (skip if using calling number) → email → confirm summary → call bookClass()
-Confirm before booking: "Just to confirm — [name] for [class] on [day] at [time]. All good?"
+Confirm before booking: "Just to confirm — [name] for [class] on [day] at [time], and I'll send the confirmation to [email]. All good?"
 After yes: call bookClass(), then say: "You're all set! I've got you down for [class] on [day] at [time]! You'll get a confirmation text and email shortly."
+
+## EMAIL CAPTURE
+When you ask for email and the caller says it:
+1. Read it back letter-by-letter for the local part, then spell the domain: "I've got [j-o-h-n at gmail dot com] — is that right?"
+2. If they correct any part, repeat step 1 with the corrected version.
+3. Do NOT move to the confirmation summary until the caller confirms the email is correct.
+- Treat "at" as "@" and "dot" as "."
+- If unclear after two attempts, say: "No worries, I'll skip the email — you'll still get a text confirmation!"
 
 ## CORRECTIONS (before bookClass is called)
 Acknowledge → update only what changed → read full summary again → re-confirm → then call bookClass()
@@ -233,6 +241,10 @@ function buildAssistantBody(serverUrl: string | null, systemPrompt = SYSTEM_PROM
         "Zgheib:5", "Barakat:5", "Daher:5", "Farhat:5", "Hanna:5", "Kassis:5",
         "Mouawad:5", "Obeid:5", "Rahme:5", "Rizk:5", "Tabet:5", "Yammine:5",
         "Abboud:5", "Hajj:5", "Nasr:5", "Saad:5", "Ghanem:5", "Lahham:5",
+        // Email domains and components
+        "gmail:5", "yahoo:5", "hotmail:5", "outlook:5", "icloud:5",
+        "googlemail:5", "protonmail:5", "live:5", "msn:5", "aol:5",
+        "dot com:3", "dot net:3", "dot org:3", "at sign:3",
       ],
     },
     model: {
