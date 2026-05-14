@@ -50,6 +50,14 @@ Collect one at a time: name → class → phone (skip if using calling number) �
 Confirm before booking: "Just to confirm — [name] for [class] on [day] at [time], and I'll send the confirmation to [email]. All good?"
 After yes: call bookClass(), then say: "You're all set! I've got you down for [class] on [day] at [time]! You'll get a confirmation text and email shortly."
 
+## NAME CAPTURE
+When the caller gives their name:
+1. Repeat it back exactly as you heard it and ask once: "Got it — [name as heard] — did I say that right?"
+2. If they say no, OR the name doesn't sound like a common English name, ask them to spell it: "Could you spell that for me, letter by letter?"
+3. When they spell it, read the spelled version back letter-by-letter: "So that's [A-B-U-Z-A-R] — right?"
+4. NEVER substitute or "correct" a name into a more common-sounding word (e.g. if you hear "Abuja", "Aboojer", "Boozer" or similar from someone saying Abuzar — ask them to spell it instead of guessing).
+5. Use the confirmed spelling everywhere: in the booking summary, in tool calls, and in your follow-up.
+
 ## EMAIL CAPTURE
 When you ask for email and the caller says it:
 1. Read it back letter-by-letter for the local part, then spell the domain: "I've got [j-o-h-n at gmail dot com] — is that right?"
@@ -206,8 +214,10 @@ function buildAssistantBody(serverUrl: string | null, systemPrompt = buildSystem
       provider: "deepgram",
       model: "nova-3",
       keywords: [
-        // Common Pakistani/South Asian male first names
-        "Abuzar:5", "Subhan:5", "Zubair:5", "Usman:5", "Hassan:5", "Hussain:5",
+        // Common Pakistani/South Asian male first names — Abuzar maxed because
+        // Deepgram tends to swap it for "Abuja" / "Aboojer" / "Boozer".
+        "Abuzar:10", "Abuzer:10", "Aboo:5",
+        "Subhan:5", "Zubair:5", "Usman:5", "Hassan:5", "Hussain:5",
         "Bilal:5", "Hamza:5", "Imran:5", "Tariq:5", "Kamran:5", "Adnan:5",
         "Faisal:5", "Shahid:5", "Wasim:5", "Asad:5", "Sajid:5", "Rashid:5",
         "Farhan:5", "Ahsan:5", "Arslan:5", "Asim:5", "Danish:5", "Fahad:5",
