@@ -92,6 +92,8 @@ ALTER PUBLICATION supabase_realtime ADD TABLE members;
 
 -- ─── Migrations: run these if tables already exist ───────────────────────────
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS member_email TEXT;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS email_sent_at TIMESTAMP;
+ALTER TABLE members  ADD COLUMN IF NOT EXISTS email_sent_at TIMESTAMP;
 ALTER TABLE calls    ADD COLUMN IF NOT EXISTS messages        JSONB;
 ALTER TABLE calls    ADD COLUMN IF NOT EXISTS cost            FLOAT8;
 ALTER TABLE calls    ADD COLUMN IF NOT EXISTS cost_breakdown  JSONB;

@@ -2,8 +2,14 @@ import { NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { createServiceClient } from "@/lib/supabase";
 import { addCalendarEvent, appendLeadToSheet } from "@/lib/google";
-import { Resend } from "resend";
 import { sendBookingSMS } from "@/lib/sms";
+import { sendEmail } from "@/lib/email";
+import {
+  bookingConfirmedMember,
+  bookingConfirmedOwner,
+  leadCapturedLead,
+  leadCapturedOwner,
+} from "@/lib/email-templates";
 import { getBusinessDateStr } from "@/lib/utils";
 
 // ─── webhook auth ──────────────────────────────────────────────────────────
@@ -27,72 +33,80 @@ function verifyVapiSecret(request: Request): boolean {
 
 type DB = ReturnType<typeof createServiceClient>;
 
-async function sendBookingEmail(memberName: string, memberPhone: string, className: string, classTime: string, memberEmail?: string) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM ?? "onboarding@resend.dev";
-  const ownerEmail = process.env.RESEND_NOTIFY_EMAIL;
-  if (!apiKey) return;
+// ─── post-call email orchestration ─────────────────────────────────────────
+// All booking + lead emails are sent from handleCallEnded, not from the
+// bookClass/saveLead tool handlers. That keeps Sara's tool-call responses
+// snappy (no Resend latency mid-call) and means emails land in the caller's
+// inbox right after they hang up. Idempotent via the email_sent_at flag on
+// bookings and members, so a redelivered call.ended doesn't double-send.
 
-  const date = new Date(classTime).toLocaleString("en-US", {
-    weekday: "long", year: "numeric", month: "long", day: "numeric",
-    hour: "numeric", minute: "2-digit", timeZone: "UTC",
-  });
+async function sendPostCallEmails(db: DB, callRowId: string): Promise<void> {
+  const ownerEmail = process.env.RESEND_NOTIFY_EMAIL ?? null;
 
-  const resend = new Resend(apiKey);
-  const sends: Promise<unknown>[] = [];
+  // ── Bookings ────────────────────────────────────────────────────────────
+  const { data: bookings } = await db
+    .from("bookings")
+    .select("id, member_name, member_phone, member_email, class_name, class_time")
+    .eq("call_id", callRowId)
+    .is("email_sent_at", null);
 
-  // Owner notification
-  if (ownerEmail) {
-    sends.push(resend.emails.send({
-      from,
-      to: ownerEmail,
-      subject: `New Booking: ${memberName} — ${className}`,
-      html: `
-        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
-          <h2 style="color:#1d4ed8;margin-bottom:4px">New Booking Confirmed</h2>
-          <p style="color:#6b7280;margin-top:0">PowerFit AI Receptionist</p>
-          <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0"/>
-          <table style="width:100%;border-collapse:collapse">
-            <tr><td style="padding:6px 0;color:#6b7280;width:120px">Member</td><td style="padding:6px 0;font-weight:600">${memberName}</td></tr>
-            <tr><td style="padding:6px 0;color:#6b7280">Phone</td><td style="padding:6px 0">${memberPhone}</td></tr>
-            <tr><td style="padding:6px 0;color:#6b7280">Class</td><td style="padding:6px 0;font-weight:600">${className}</td></tr>
-            <tr><td style="padding:6px 0;color:#6b7280">Date & Time</td><td style="padding:6px 0">${date}</td></tr>
-          </table>
-          <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0"/>
-          <p style="color:#9ca3af;font-size:12px">Sent by Sara, PowerFit AI Receptionist</p>
-        </div>
-      `,
-    }));
+  for (const b of bookings ?? []) {
+    const sends: Promise<unknown>[] = [];
+
+    if (b.member_email) {
+      const tpl = bookingConfirmedMember({
+        memberName: b.member_name,
+        className: b.class_name,
+        classTime: b.class_time,
+      });
+      sends.push(sendEmail({ to: b.member_email, subject: tpl.subject, html: tpl.html }));
+    }
+
+    if (ownerEmail) {
+      const tpl = bookingConfirmedOwner({
+        memberName: b.member_name,
+        memberPhone: b.member_phone,
+        memberEmail: b.member_email ?? null,
+        className: b.class_name,
+        classTime: b.class_time,
+      });
+      sends.push(sendEmail({ to: ownerEmail, subject: tpl.subject, html: tpl.html }));
+    }
+
+    await Promise.allSettled(sends);
+    await db.from("bookings").update({ email_sent_at: new Date().toISOString() }).eq("id", b.id);
   }
 
-  // Member confirmation
-  if (memberEmail) {
-    sends.push(resend.emails.send({
-      from,
-      to: memberEmail,
-      subject: `Your ${className} booking is confirmed! ✅`,
-      html: `
-        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
-          <h2 style="color:#16a34a;margin-bottom:4px">You're all set, ${memberName}! 🎉</h2>
-          <p style="color:#6b7280;margin-top:0">Your class booking is confirmed.</p>
-          <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0"/>
-          <table style="width:100%;border-collapse:collapse">
-            <tr><td style="padding:6px 0;color:#6b7280;width:100px">Class</td><td style="padding:6px 0;font-weight:600">${className}</td></tr>
-            <tr><td style="padding:6px 0;color:#6b7280">When</td><td style="padding:6px 0;font-weight:600">${date}</td></tr>
-            <tr><td style="padding:6px 0;color:#6b7280">Where</td><td style="padding:6px 0">PowerFit Gym</td></tr>
-          </table>
-          <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0"/>
-          <p style="color:#374151">See you there! If you need to cancel or reschedule, give us a call.</p>
-          <p style="color:#9ca3af;font-size:12px;margin-top:24px">— Sara, PowerFit AI Receptionist</p>
-        </div>
-      `,
-    }));
-  }
+  // ── Leads (members with status='lead' captured during this call) ────────
+  const { data: leads } = await db
+    .from("members")
+    .select("id, name, phone, email, interest, notes, status")
+    .eq("call_id", callRowId)
+    .eq("status", "lead")
+    .is("email_sent_at", null);
 
-  const emailResults = await Promise.allSettled(sends);
-  emailResults.forEach((r, i) => {
-    if (r.status === "rejected") console.error(`[vapi-webhook] email send [${i}] error:`, r.reason);
-  });
+  for (const l of leads ?? []) {
+    const sends: Promise<unknown>[] = [];
+
+    if (l.email) {
+      const tpl = leadCapturedLead({ name: l.name ?? "there", interest: l.interest });
+      sends.push(sendEmail({ to: l.email, subject: tpl.subject, html: tpl.html }));
+    }
+
+    if (ownerEmail) {
+      const tpl = leadCapturedOwner({
+        name: l.name ?? "Unknown",
+        phone: l.phone ?? "",
+        email: l.email ?? null,
+        interest: l.interest,
+        notes: l.notes,
+      });
+      sends.push(sendEmail({ to: ownerEmail, subject: tpl.subject, html: tpl.html }));
+    }
+
+    await Promise.allSettled(sends);
+    await db.from("members").update({ email_sent_at: new Date().toISOString() }).eq("id", l.id);
+  }
 }
 
 // ─── analytics (fire-and-forget, never blocks the Vapi response) ───────────
@@ -186,14 +200,15 @@ async function executeToolCall(
       return "I'm sorry, I wasn't able to complete the booking due to a technical issue. Please call us back and we'll get you sorted!";
     }
 
-    // Await notifications before returning — ensures SMS/email are sent before
-    // the Vercel function instance is released. Tool calls tolerate 2-3s delay.
+    // Await SMS + calendar before returning so the function instance stays
+    // alive long enough to deliver them. Email is intentionally NOT sent
+    // here — it fires post-call from handleCallEnded → sendPostCallEmails
+    // so it lands after the caller hangs up.
     const notifResults = await Promise.allSettled([
       addCalendarEvent({ memberName, memberPhone, memberEmail, className, classTime: classTimestamp }),
       sendBookingSMS(memberPhone, memberName, className, classTimestamp),
-      sendBookingEmail(memberName, memberPhone, className, classTimestamp, memberEmail),
     ]);
-    const notifLabels = ["calendar", "SMS", "email"];
+    const notifLabels = ["calendar", "SMS"];
     notifResults.forEach((r, i) => {
       if (r.status === "rejected") console.error(`[vapi-webhook] ${notifLabels[i]} error:`, r.reason);
     });
@@ -395,6 +410,13 @@ async function handleCallEnded(db: DB, call: Record<string, unknown>) {
     });
   }
 
+  // Resolve the call row UUID for downstream lookups (post-call emails).
+  let callRowId = (existing?.id as string | undefined) ?? undefined;
+  if (!callRowId) {
+    const { data: fresh } = await db.from("calls").select("id").eq("vapi_call_id", id).maybeSingle();
+    callRowId = (fresh?.id as string | undefined) ?? undefined;
+  }
+
   // Fire-and-forget: Twilio cost
   void (async () => {
     try {
@@ -402,6 +424,15 @@ async function handleCallEnded(db: DB, call: Record<string, unknown>) {
       if (cost !== null) await db.from("calls").update({ twilio_cost: cost }).eq("vapi_call_id", id);
     } catch { /* ignore */ }
   })();
+
+  // Fire-and-forget: post-call emails (booking confirmations + lead follow-ups).
+  // Idempotent via bookings.email_sent_at / members.email_sent_at, so duplicate
+  // call.ended deliveries don't double-send.
+  if (callRowId) {
+    void sendPostCallEmails(db, callRowId).catch((e) =>
+      console.error("[vapi-webhook] sendPostCallEmails error:", e)
+    );
+  }
 
   if (!wasAlreadyCompleted) {
     bumpAnalytics(db, { total_calls: 1, completed_calls: 1 });
