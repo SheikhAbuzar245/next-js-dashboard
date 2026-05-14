@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { createServiceClient } from "@/lib/supabase";
 import { format } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

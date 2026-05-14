@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { createServiceClient } from "@/lib/supabase";
 import { formatCallDuration, getStatusColor } from "@/lib/utils";
 import { format } from "date-fns";

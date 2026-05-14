@@ -1,3 +1,7 @@
+// Always render fresh on every request so AutoRefresh actually picks up new
+// rows from Supabase (no static caching, no ISR).
+export const dynamic = "force-dynamic";
+
 import { Phone, Calendar, Users, TrendingUp } from "lucide-react";
 import { createServiceClient } from "@/lib/supabase";
 import StatCard from "@/components/cards/StatCard";
