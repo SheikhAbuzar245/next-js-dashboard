@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { timingSafeEqual } from "crypto";
 
 // ─── Dashboard auth (HTTP Basic Auth) ──────────────────────────────────────
+// Runs on the Edge runtime (Next.js 14 middleware constraint) — no Node
+// `crypto` / `Buffer` imports here. The constant-time comparison below is
+// implemented with plain JS so it works without `node:crypto`.
+//
 // Protects the entire dashboard + API surface with a single shared credential.
 // Configure DASHBOARD_USER and DASHBOARD_PASSWORD env vars in production.
 // If either is unset we log a warning and let traffic through so local dev
@@ -18,11 +21,14 @@ function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
+// Constant-time string comparison without relying on Node `crypto`.
 function safeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  if (ab.length !== bb.length) return false;
-  return timingSafeEqual(ab, bb);
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
 }
 
 function unauthorized(): NextResponse {
