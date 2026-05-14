@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
+import { getBusinessDayStartUTC, getBusinessDayEndUTC } from "@/lib/utils";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -13,10 +14,10 @@ export async function GET(request: Request) {
     .order("created_at", { ascending: false });
 
   if (status) query = query.eq("status", status);
-  if (date)
+  if (date && /^\d{4}-\d{2}-\d{2}$/.test(date))
     query = query
-      .gte("class_time", `${date}T00:00:00`)
-      .lte("class_time", `${date}T23:59:59`);
+      .gte("class_time", getBusinessDayStartUTC(date))
+      .lte("class_time", getBusinessDayEndUTC(date));
 
   const { data: bookings, count, error } = await query;
 

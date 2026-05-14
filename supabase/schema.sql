@@ -75,6 +75,16 @@ CREATE TABLE IF NOT EXISTS analytics (
   created_at          TIMESTAMP DEFAULT now()
 );
 
+-- ─── Row-Level Security ────────────────────────────────────────────────────
+-- Enable RLS on every table with no policies attached. The dashboard talks to
+-- the DB exclusively via the service-role key (lib/supabase.ts), which bypasses
+-- RLS. Anon/auth roles get zero rows by default — safe.
+ALTER TABLE calls     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bookings  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE members   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE classes   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE analytics ENABLE ROW LEVEL SECURITY;
+
 -- Enable realtime for live dashboard updates
 ALTER PUBLICATION supabase_realtime ADD TABLE calls;
 ALTER PUBLICATION supabase_realtime ADD TABLE bookings;
@@ -86,6 +96,34 @@ ALTER TABLE calls    ADD COLUMN IF NOT EXISTS messages        JSONB;
 ALTER TABLE calls    ADD COLUMN IF NOT EXISTS cost            FLOAT8;
 ALTER TABLE calls    ADD COLUMN IF NOT EXISTS cost_breakdown  JSONB;
 ALTER TABLE calls    ADD COLUMN IF NOT EXISTS twilio_cost     FLOAT8;
+
+-- Atomic analytics increment — replaces unsafe read-modify-write in app code.
+-- Pass any subset of the five counters; the function inserts a new row or
+-- atomically adds to the existing one.
+CREATE OR REPLACE FUNCTION public.increment_analytics(
+  p_date date,
+  p_total_calls int DEFAULT 0,
+  p_completed_calls int DEFAULT 0,
+  p_missed_calls int DEFAULT 0,
+  p_bookings_made int DEFAULT 0,
+  p_leads_captured int DEFAULT 0
+)
+RETURNS void
+LANGUAGE sql
+AS $$
+  INSERT INTO public.analytics (
+    date, total_calls, completed_calls, missed_calls, bookings_made, leads_captured
+  )
+  VALUES (
+    p_date, p_total_calls, p_completed_calls, p_missed_calls, p_bookings_made, p_leads_captured
+  )
+  ON CONFLICT (date) DO UPDATE SET
+    total_calls     = public.analytics.total_calls     + EXCLUDED.total_calls,
+    completed_calls = public.analytics.completed_calls + EXCLUDED.completed_calls,
+    missed_calls    = public.analytics.missed_calls    + EXCLUDED.missed_calls,
+    bookings_made   = public.analytics.bookings_made   + EXCLUDED.bookings_made,
+    leads_captured  = public.analytics.leads_captured  + EXCLUDED.leads_captured;
+$$;
 
 -- Sample classes
 INSERT INTO classes (name, instructor, schedule, capacity) VALUES

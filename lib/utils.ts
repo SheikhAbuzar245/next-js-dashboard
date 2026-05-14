@@ -23,19 +23,49 @@ export function formatPhone(phone: string | null): string {
   return phone;
 }
 
-// PKT = UTC+5 (Pakistan Standard Time)
-const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
+// ─── Business timezone helpers ─────────────────────────────────────────────
+// All "today" math in this app must go through these helpers so the Overview
+// dashboard, analytics RPC, and date-range filters agree on what "today" is.
+// Configure via BUSINESS_TZ env var (IANA name); defaults to Asia/Karachi.
 
-export function getPKTDateStr(): string {
-  return new Date(Date.now() + PKT_OFFSET_MS).toISOString().split("T")[0];
+export const BUSINESS_TZ = process.env.BUSINESS_TZ ?? "Asia/Karachi";
+
+const yyyyMmDdFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: BUSINESS_TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+// Today's date (YYYY-MM-DD) in the business timezone.
+export function getBusinessDateStr(d: Date = new Date()): string {
+  return yyyyMmDdFormatter.format(d);
 }
 
-export function getPKTDayStartUTC(dateStr: string): string {
-  return new Date(new Date(`${dateStr}T00:00:00Z`).getTime() - PKT_OFFSET_MS).toISOString();
+// Returns the UTC ISO timestamp for the start of the given business-tz date.
+// Uses Intl to compute the offset (handles DST automatically).
+export function getBusinessDayStartUTC(dateStr: string): string {
+  // Find the timezone offset for that date by inspecting how the tz formats
+  // a known UTC instant. We sample noon UTC to avoid DST-transition edges.
+  const probe = new Date(`${dateStr}T12:00:00Z`);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: BUSINESS_TZ,
+    hour12: false,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  }).formatToParts(probe);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "00";
+  const local = Date.UTC(
+    Number(get("year")), Number(get("month")) - 1, Number(get("day")),
+    Number(get("hour")), Number(get("minute")), Number(get("second"))
+  );
+  const offsetMs = local - probe.getTime();
+  return new Date(Date.parse(`${dateStr}T00:00:00Z`) - offsetMs).toISOString();
 }
 
-export function toPKT(utcTimestamp: string): Date {
-  return new Date(new Date(utcTimestamp).getTime() + PKT_OFFSET_MS);
+export function getBusinessDayEndUTC(dateStr: string): string {
+  const start = new Date(getBusinessDayStartUTC(dateStr));
+  return new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1).toISOString();
 }
 
 export function getStatusColor(status: string): string {

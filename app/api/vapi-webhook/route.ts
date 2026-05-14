@@ -1,8 +1,29 @@
 import { NextResponse } from "next/server";
+import { timingSafeEqual } from "crypto";
 import { createServiceClient } from "@/lib/supabase";
 import { addCalendarEvent, appendLeadToSheet } from "@/lib/google";
 import { Resend } from "resend";
 import { sendBookingSMS } from "@/lib/sms";
+import { getBusinessDateStr } from "@/lib/utils";
+
+// ─── webhook auth ──────────────────────────────────────────────────────────
+// Vapi sends a shared secret in the `X-Vapi-Secret` header. Configure it
+// under Vapi dashboard → Org → Server URL → Secret, and mirror to
+// VAPI_WEBHOOK_SECRET here. If the env var is unset we log loudly and accept
+// requests so local dev keeps working; production should always have it set.
+
+function verifyVapiSecret(request: Request): boolean {
+  const expected = process.env.VAPI_WEBHOOK_SECRET;
+  if (!expected) {
+    console.warn("[vapi-webhook] VAPI_WEBHOOK_SECRET not set — accepting unsigned request. Set this env var in production.");
+    return true;
+  }
+  const provided = request.headers.get("x-vapi-secret") ?? "";
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
 
 type DB = ReturnType<typeof createServiceClient>;
 
@@ -80,23 +101,18 @@ function bumpAnalytics(
   db: DB,
   increments: Partial<Record<"total_calls" | "completed_calls" | "missed_calls" | "bookings_made" | "leads_captured", number>>
 ): void {
-  const today = new Date().toISOString().split("T")[0];
-  const fields = Object.keys(increments);
-  const selectFields = ["id", ...fields].join(", ");
-
+  const today = getBusinessDateStr();
   void (async () => {
     try {
-      const { data } = await db.from("analytics").select(selectFields).eq("date", today).maybeSingle();
-      const newVals: Record<string, number> = {};
-      for (const [key, inc] of Object.entries(increments)) {
-        newVals[key] = ((data as Record<string, number> | null)?.[key] ?? 0) + (inc ?? 1);
-      }
-      if (data) {
-        await db.from("analytics").update(newVals).eq("date", today);
-      } else {
-        await db.from("analytics").insert({ date: today, ...newVals });
-      }
-    } catch { /* ignore */ }
+      await db.rpc("increment_analytics", {
+        p_date: today,
+        p_total_calls:     increments.total_calls     ?? 0,
+        p_completed_calls: increments.completed_calls ?? 0,
+        p_missed_calls:    increments.missed_calls    ?? 0,
+        p_bookings_made:   increments.bookings_made   ?? 0,
+        p_leads_captured:  increments.leads_captured  ?? 0,
+      });
+    } catch (e) { console.error("[vapi-webhook] analytics rpc error:", e); }
   })();
 }
 
@@ -141,15 +157,13 @@ async function executeToolCall(
   if (name === "bookClass") {
     const { memberName, memberPhone, memberEmail, className, classTime } = args;
 
-    let classTimestamp: string;
-    try {
-      const parsed = new Date(classTime);
-      classTimestamp = isNaN(parsed.getTime())
-        ? new Date(Date.now() + 86400000).toISOString()
-        : parsed.toISOString();
-    } catch {
-      classTimestamp = new Date(Date.now() + 86400000).toISOString();
+    // Reject malformed dates instead of silently substituting "tomorrow same
+    // time" — the AI must re-prompt the caller for a valid date.
+    const parsed = classTime ? new Date(classTime) : null;
+    if (!parsed || isNaN(parsed.getTime())) {
+      return "I didn't quite catch the date and time — could you say the day and time you'd like to book?";
     }
+    const classTimestamp = parsed.toISOString();
 
     // Look up call UUID for FK reference
     const { data: callRow } = vapiCallId
@@ -307,12 +321,17 @@ async function fetchTwilioCost(callerPhone: string | null, startedAt: string | n
 }
 
 async function handleCallStarted(db: DB, call: Record<string, unknown>) {
-  await db.from("calls").insert({
-    vapi_call_id: call.id as string,
-    caller_phone: extractCallerPhone(call),
-    status: "active",
-    started_at: (call.startedAt as string) ?? new Date().toISOString(),
-  });
+  // Idempotent: Vapi can deliver status-update and call-start for the same call,
+  // and may retry on transient errors. Upsert avoids unique-constraint 500s.
+  await db.from("calls").upsert(
+    {
+      vapi_call_id: call.id as string,
+      caller_phone: extractCallerPhone(call),
+      status: "active",
+      started_at: (call.startedAt as string) ?? new Date().toISOString(),
+    },
+    { onConflict: "vapi_call_id", ignoreDuplicates: true }
+  );
 }
 
 async function handleCallEnded(db: DB, call: Record<string, unknown>) {
@@ -354,7 +373,16 @@ async function handleCallEnded(db: DB, call: Record<string, unknown>) {
   const callerPhone = extractCallerPhone(call);
   const startedAt = (call.startedAt as string) ?? null;
 
-  const { data: existing } = await db.from("calls").select("id").eq("vapi_call_id", id).maybeSingle();
+  const { data: existing } = await db
+    .from("calls")
+    .select("id, status")
+    .eq("vapi_call_id", id)
+    .maybeSingle();
+
+  // Only count analytics on the first transition into 'completed' — protects
+  // against duplicate call.ended deliveries and against the web-call client
+  // POST having already counted this call.
+  const wasAlreadyCompleted = existing?.status === "completed";
 
   if (existing) {
     await db.from("calls").update(payload).eq("vapi_call_id", id);
@@ -375,25 +403,39 @@ async function handleCallEnded(db: DB, call: Record<string, unknown>) {
     } catch { /* ignore */ }
   })();
 
-  // Fire-and-forget: analytics (was blocking before)
-  bumpAnalytics(db, { total_calls: 1, completed_calls: 1 });
+  if (!wasAlreadyCompleted) {
+    bumpAnalytics(db, { total_calls: 1, completed_calls: 1 });
+  }
 }
 
 async function handleMissedCall(db: DB, call: Record<string, unknown>) {
-  await db.from("calls").insert({
-    vapi_call_id: call.id as string,
-    caller_phone: extractCallerPhone(call),
-    status: "missed",
-    started_at: (call.missedAt as string) ?? new Date().toISOString(),
-  });
+  // Idempotent like handleCallStarted; avoid duplicate analytics bumps via the
+  // ignoreDuplicates flag — analytics only fires if the row is newly inserted.
+  const { data: inserted } = await db
+    .from("calls")
+    .upsert(
+      {
+        vapi_call_id: call.id as string,
+        caller_phone: extractCallerPhone(call),
+        status: "missed",
+        started_at: (call.missedAt as string) ?? new Date().toISOString(),
+      },
+      { onConflict: "vapi_call_id", ignoreDuplicates: true }
+    )
+    .select("id");
 
-  // Fire-and-forget: analytics (was blocking before)
-  bumpAnalytics(db, { total_calls: 1, missed_calls: 1 });
+  if (inserted && inserted.length > 0) {
+    bumpAnalytics(db, { total_calls: 1, missed_calls: 1 });
+  }
 }
 
 // ─── main handler ──────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
+  if (!verifyVapiSecret(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const body = await request.json() as Record<string, unknown>;
     const db = createServiceClient();

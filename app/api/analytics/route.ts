@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
-import { formatCallDuration } from "@/lib/utils";
+import { formatCallDuration, getBusinessDateStr, getBusinessDayStartUTC, BUSINESS_TZ } from "@/lib/utils";
 
 export async function GET() {
   const db = createServiceClient();
-  const today = new Date().toISOString().split("T")[0];
+  const today = getBusinessDateStr();
 
   // Today's stats from calls table
   const { data: todayCalls } = await db
     .from("calls")
     .select("status, booking_made, lead_captured")
-    .gte("created_at", `${today}T00:00:00`);
+    .gte("created_at", getBusinessDayStartUTC(today));
 
   const totalCalls = todayCalls?.length ?? 0;
   const completedCalls = todayCalls?.filter((c) => c.status === "completed").length ?? 0;
@@ -18,10 +18,10 @@ export async function GET() {
   const bookingsMade = todayCalls?.filter((c) => c.booking_made).length ?? 0;
   const newLeads = todayCalls?.filter((c) => c.lead_captured).length ?? 0;
 
-  // Last 7 days
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-  const sevenDaysAgoStr = sevenDaysAgo.toISOString().split("T")[0];
+  // Last 7 days (business timezone)
+  const todayMs = new Date(getBusinessDayStartUTC(today)).getTime();
+  const sevenDaysAgoMs = todayMs - 6 * 24 * 60 * 60 * 1000;
+  const sevenDaysAgoStr = getBusinessDateStr(new Date(sevenDaysAgoMs));
 
   const { data: weekAnalytics } = await db
     .from("analytics")
@@ -34,7 +34,7 @@ export async function GET() {
 
   weekAnalytics?.forEach((row) => {
     const dayIndex = Math.floor(
-      (new Date(row.date).getTime() - sevenDaysAgo.getTime()) /
+      (Date.parse(`${row.date}T00:00:00Z`) - Date.parse(`${sevenDaysAgoStr}T00:00:00Z`)) /
         (1000 * 60 * 60 * 24)
     );
     if (dayIndex >= 0 && dayIndex < 7) {
@@ -47,7 +47,7 @@ export async function GET() {
   const { data: bookings } = await db
     .from("bookings")
     .select("class_name")
-    .gte("created_at", `${sevenDaysAgoStr}T00:00:00`);
+    .gte("created_at", getBusinessDayStartUTC(sevenDaysAgoStr));
 
   const classCount: Record<string, number> = {};
   bookings?.forEach((b) => {
@@ -59,8 +59,8 @@ export async function GET() {
   // AI performance — single query with all needed fields
   const { data: allCalls } = await db
     .from("calls")
-    .select("status, duration, booking_made")
-    .gte("created_at", `${sevenDaysAgoStr}T00:00:00`);
+    .select("status, duration, booking_made, created_at")
+    .gte("created_at", getBusinessDayStartUTC(sevenDaysAgoStr));
 
   const total = allCalls?.length ?? 0;
   const resolved = allCalls?.filter((c) => c.status === "completed").length ?? 0;
@@ -74,20 +74,30 @@ export async function GET() {
   const bookedCount = allCalls?.filter((c) => c.booking_made).length ?? 0;
   const bookingSuccessRate = total > 0 ? `${Math.round((bookedCount / total) * 100)}%` : "—";
 
-  // Peak hour — computed from call created_at timestamps
+  // Peak hour — bucket calls by hour in the business timezone
+  const hourFmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: BUSINESS_TZ,
+    hour: "2-digit",
+    hour12: false,
+  });
   const hourCounts: number[] = Array(24).fill(0);
   allCalls?.forEach((c) => {
-    // created_at is a string; extract UTC hour
     const raw = (c as { created_at?: string }).created_at;
     if (raw) {
-      const hour = new Date(raw).getUTCHours();
+      const parts = hourFmt.formatToParts(new Date(raw));
+      const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0") % 24;
       hourCounts[hour] += 1;
     }
   });
+  const formatHour = (h: number) => {
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    const suffix = h < 12 ? "am" : "pm";
+    return `${h12}${suffix}`;
+  };
   const peakHourIndex = hourCounts.indexOf(Math.max(...hourCounts));
   const peakHourLabel =
     total > 0
-      ? `${peakHourIndex % 12 || 12}${peakHourIndex < 12 ? "am" : "pm"} – ${(peakHourIndex + 1) % 12 || 12}${(peakHourIndex + 1) < 12 ? "am" : "pm"}`
+      ? `${formatHour(peakHourIndex)} – ${formatHour((peakHourIndex + 1) % 24)}`
       : "—";
 
   return NextResponse.json({

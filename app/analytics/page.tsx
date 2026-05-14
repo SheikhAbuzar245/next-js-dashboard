@@ -9,7 +9,7 @@ import BookingsTrendChart from "@/components/charts/BookingsTrendChart";
 import TopClassesPieChart from "@/components/charts/TopClassesPieChart";
 import PeakHoursHeatmap from "@/components/charts/PeakHoursHeatmap";
 import { TrendingUp, Phone, Calendar, Users } from "lucide-react";
-import { formatCallDuration } from "@/lib/utils";
+import { formatCallDuration, BUSINESS_TZ } from "@/lib/utils";
 
 async function getAnalyticsData() {
   const db = createServiceClient();
@@ -101,13 +101,26 @@ function buildHeatmap(calls: { created_at: string | null }[]) {
     hours.forEach((h) => (grid[d][h] = 0));
   });
 
-  const PKT_OFFSET = 5 * 60 * 60 * 1000;
+  // Format every timestamp into the business timezone, then bucket by weekday + hour.
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: BUSINESS_TZ,
+    weekday: "short",
+    hour: "2-digit",
+    hour12: false,
+  });
+  const dayLabelMap: Record<string, string> = {
+    Mon: "Mon", Tue: "Tue", Wed: "Wed", Thu: "Thu", Fri: "Fri", Sat: "Sat", Sun: "Sun",
+  };
+
   calls.forEach((c) => {
     if (!c.created_at) return;
-    const pkt = new Date(new Date(c.created_at).getTime() + PKT_OFFSET);
-    const dayIndex = (pkt.getUTCDay() + 6) % 7;
-    const hour = pkt.getUTCHours();
-    grid[days[dayIndex]][hour] += 1;
+    const parts = fmt.formatToParts(new Date(c.created_at));
+    const weekday = parts.find((p) => p.type === "weekday")?.value ?? "Mon";
+    const hourStr = parts.find((p) => p.type === "hour")?.value ?? "0";
+    // Intl returns "24" for midnight in some locales; normalize to 0.
+    const hour = Number(hourStr) % 24;
+    const dayKey = dayLabelMap[weekday] ?? "Mon";
+    grid[dayKey][hour] += 1;
   });
 
   return { days, hours, grid };
