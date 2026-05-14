@@ -134,7 +134,14 @@ async function ensureCredential(
 }
 
 function buildAssistantBody(serverUrl: string | null, systemPrompt = buildSystemPrompt()): Record<string, unknown> {
-  const tools = serverUrl
+  // Same secret that the webhook route validates. We push it into the
+  // assistant + tool configs so Vapi sends it as X-Vapi-Secret on every event.
+  const webhookSecret = process.env.VAPI_WEBHOOK_SECRET;
+  const toolServer: Record<string, unknown> | null = serverUrl
+    ? webhookSecret ? { url: serverUrl, secret: webhookSecret } : { url: serverUrl }
+    : null;
+
+  const tools = toolServer
     ? [
         {
           type: "function",
@@ -153,7 +160,7 @@ function buildAssistantBody(serverUrl: string | null, systemPrompt = buildSystem
               required: ["memberName", "memberPhone", "className", "classTime"],
             },
           },
-          server: { url: serverUrl },
+          server: toolServer,
         },
         {
           type: "function",
@@ -172,7 +179,7 @@ function buildAssistantBody(serverUrl: string | null, systemPrompt = buildSystem
               required: ["name", "phone"],
             },
           },
-          server: { url: serverUrl },
+          server: toolServer,
         },
         {
           type: "function",
@@ -187,7 +194,7 @@ function buildAssistantBody(serverUrl: string | null, systemPrompt = buildSystem
               required: ["phone"],
             },
           },
-          server: { url: serverUrl },
+          server: toolServer,
         },
         {
           type: "function",
@@ -202,7 +209,7 @@ function buildAssistantBody(serverUrl: string | null, systemPrompt = buildSystem
               required: [],
             },
           },
-          server: { url: serverUrl },
+          server: toolServer,
         },
       ]
     : [];
@@ -316,7 +323,12 @@ function buildAssistantBody(serverUrl: string | null, systemPrompt = buildSystem
     },
   };
 
-  if (serverUrl) body.serverUrl = serverUrl;
+  if (serverUrl) {
+    body.serverUrl = serverUrl;
+    body.server = webhookSecret
+      ? { url: serverUrl, secret: webhookSecret }
+      : { url: serverUrl };
+  }
   return body;
 }
 
